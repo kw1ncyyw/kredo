@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KREDO | Secure Business Escrow & Payments</title>
+    <script>
+      // Sandboxed iframe environment safety patches
+      (function() {
+        try {
+          if (typeof window !== 'undefined') {
+            // Prevent formdata-polyfill from executing by ensuring keys exists
+            if (typeof window.FormData !== 'undefined' && !window.FormData.prototype.keys) {
+              window.FormData.prototype.keys = function* () { yield* []; };
+            }
+
+            // Define custom write fallback for fetch on window to prevent write errors from any polyfills
+            const originalFetch = window.fetch;
+            if (originalFetch) {
+              try {
+                Object.defineProperty(window, 'fetch', {
+                  get: function() { return originalFetch; },
+                  set: function(val) { console.warn('Swallowed setting fetch on window to preserve standard getter:', val); },
+                  configurable: true,
+                  enumerable: true
+                });
+              } catch (err) {
+                console.warn('Could not define configurable fetch setter:', err);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('Environment patch failed:', e);
+        }
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
