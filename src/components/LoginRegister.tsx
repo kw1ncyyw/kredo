@@ -20,6 +20,11 @@ interface LoginRegisterProps {
 }
 
 type AuthViewState = 'login' | 'register' | 'forgot-password' | 'email-verification' | 'mfa-challenge';
+const EMAIL_OTP_BOX_COUNT = 8;
+
+function normalizeEmailOtp(value: string): string {
+  return value.replace(/\D/g, '').slice(0, EMAIL_OTP_BOX_COUNT);
+}
 
 export default function LoginRegister({
   setRoute,
@@ -53,6 +58,7 @@ export default function LoginRegister({
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [mfaFactorId, setMfaFactorId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
+  const emailOtpIsValid = verificationCode.length === 6 || verificationCode.length === 8;
 
   // CAPTCHA states
   const [captchaCode, setCaptchaCode] = useState('');
@@ -152,8 +158,8 @@ export default function LoginRegister({
     }
 
     if (viewState === 'email-verification') {
-      if (!/^\d{6}$/.test(verificationCode)) {
-        tempErrors.verificationCode = t.auth.requiredError;
+      if (!emailOtpIsValid) {
+        tempErrors.verificationCode = tr.verificationCodeError;
       }
     }
 
@@ -221,7 +227,7 @@ export default function LoginRegister({
           setGeneralError(response.error || tr.resetFailed);
         }
       } else if (viewState === 'email-verification') {
-        const response = await KredoAuth.verifyEmailCode(email, verificationCode, lang);
+        const response = await KredoAuth.verifyEmailCode(email, normalizeEmailOtp(verificationCode), lang);
         if (response.success && response.user) {
           setAuthSuccessMsg(tr.identityVerified);
           setTimeout(() => {
@@ -622,8 +628,8 @@ export default function LoginRegister({
                     {tr.verificationCodeTitle}
                   </label>
                   
-                  <div className="flex gap-2 justify-center">
-                    {[...Array(6)].map((_, i) => (
+                  <div className="mx-auto grid w-full max-w-[22rem] grid-cols-8 gap-1.5 sm:gap-2">
+                    {Array.from({ length: EMAIL_OTP_BOX_COUNT }, (_, i) => (
                       <input
                         key={i}
                         type="text"
@@ -634,28 +640,47 @@ export default function LoginRegister({
                         autoComplete={i === 0 ? 'one-time-code' : 'off'}
                         aria-label={`${tr.verificationCodeTitle} ${i + 1}`}
                         onChange={(e) => {
-                          const digit = e.target.value.replace(/\D/g, '').slice(-1);
-                          const digits = verificationCode.padEnd(6, ' ').split('');
-                          digits[i] = digit || ' ';
-                          setVerificationCode(digits.join('').trimEnd());
-                          if (digit && i < 5) otpRefs.current[i + 1]?.focus();
+                          const rawDigits = normalizeEmailOtp(e.target.value);
+                          if (rawDigits.length > 1) {
+                            setVerificationCode(rawDigits);
+                            otpRefs.current[Math.min(rawDigits.length, EMAIL_OTP_BOX_COUNT) - 1]?.focus();
+                            return;
+                          }
+
+                          const digit = rawDigits.slice(-1);
+                          const digits = verificationCode.split('');
+                          if (digit) {
+                            digits[i] = digit;
+                          } else {
+                            digits.splice(i, 1);
+                          }
+                          const nextCode = normalizeEmailOtp(digits.join(''));
+                          setVerificationCode(nextCode);
+                          setErrors((current) => ({ ...current, verificationCode: '' }));
+                          if (digit && i < EMAIL_OTP_BOX_COUNT - 1) otpRefs.current[i + 1]?.focus();
                         }}
                         onKeyDown={(e) => {
                           if (e.key === 'Backspace' && !verificationCode[i] && i > 0) {
+                            e.preventDefault();
                             otpRefs.current[i - 1]?.focus();
                           }
                         }}
                         onPaste={(e) => {
                           e.preventDefault();
-                          const pastedCode = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+                          const pastedCode = normalizeEmailOtp(e.clipboardData.getData('text'));
                           if (pastedCode) {
                             setVerificationCode(pastedCode);
-                            otpRefs.current[Math.min(pastedCode.length, 6) - 1]?.focus();
+                            setErrors((current) => ({ ...current, verificationCode: '' }));
+                            otpRefs.current[Math.min(pastedCode.length, EMAIL_OTP_BOX_COUNT) - 1]?.focus();
                           }
                         }}
                         id={`otp-input-${i}`}
                         disabled={loading}
-                        className="w-10 h-12 text-center text-lg font-mono font-black rounded-xl border transition-all bg-stone-950 text-white border-stone-900 focus:border-stone-500"
+                        className={`h-11 min-w-0 w-full rounded-lg border text-center font-mono text-base font-black transition-all sm:h-12 sm:rounded-xl sm:text-lg ${
+                          theme === 'dark'
+                            ? 'border-stone-800 bg-stone-950 text-white focus:border-emerald-500'
+                            : 'border-stone-200 bg-stone-50 text-stone-950 focus:border-emerald-500'
+                        }`}
                       />
                     ))}
                   </div>
@@ -747,12 +772,12 @@ export default function LoginRegister({
             <button
               id="auth-submit-btn"
               type="submit"
-              disabled={loading}
+              disabled={loading || (viewState === 'email-verification' && !emailOtpIsValid)}
               className={`w-full py-4 mt-2 rounded-2xl text-xs font-bold transition-all shadow-md active:scale-[0.98] select-none uppercase tracking-wider flex items-center justify-center space-x-2 ${
                 theme === 'dark'
                   ? 'bg-white text-black hover:bg-stone-200'
                   : 'bg-black text-white hover:bg-stone-900'
-              } ${loading ? 'opacity-50 cursor-not-allowed' : ''}`}
+              } ${(loading || (viewState === 'email-verification' && !emailOtpIsValid)) ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               {loading && <RefreshCw className="h-4 w-4 animate-spin" />}
               <span>

@@ -53,7 +53,11 @@ function translateAuthError(errorMsg: string, lang: Language): string {
     return t.errorUserAlreadyExists || 'Account already exists';
   }
   if (msg.includes('token has expired') || msg.includes('expired')) {
-    return lang === 'ua' ? 'Термін дії коду минув' : lang === 'ru' ? 'Срок действия кода истек' : 'Verification code expired';
+    return lang === 'ua'
+      ? 'Код застарів. Надішліть код повторно.'
+      : lang === 'ru'
+        ? 'Код устарел. Отправьте код повторно.'
+        : 'Code expired. Resend the code.';
   }
   if (
     msg.includes('invalid message')
@@ -62,10 +66,14 @@ function translateAuthError(errorMsg: string, lang: Language): string {
     || msg.includes('invalid totp')
     || msg.includes('challenge')
   ) {
-    return lang === 'ua' ? 'Неправильний код' : lang === 'ru' ? 'Неверный код' : 'Invalid verification code';
+    return lang === 'ua' ? 'Неправильний код' : lang === 'ru' ? 'Неверный код' : 'Invalid code';
   }
   if (msg.includes('too many requests') || msg.includes('rate limit')) {
-    return lang === 'ua' ? 'Забагато спроб. Зачекайте.' : lang === 'ru' ? 'Слишком много попыток. Подождите.' : 'Too many requests. Please wait.';
+    return lang === 'ua'
+      ? 'Забагато спроб. Спробуйте пізніше.'
+      : lang === 'ru'
+        ? 'Слишком много попыток. Попробуйте позже.'
+        : 'Too many attempts. Please try again later.';
   }
   if (msg.includes('email not confirmed')) {
      return lang === 'ua' ? 'Email не підтверджено' : lang === 'ru' ? 'Email не подтвержден' : 'Email not confirmed';
@@ -805,10 +813,14 @@ export const KredoAuth = {
   verifyEmailCode: async (email: string, code: string, lang: Language = 'ua'): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
     const t = i18nDict[lang] || i18nDict.ua;
 
+    if (!/^(?:\d{6}|\d{8})$/.test(code)) {
+      return { success: false, error: t.auth.verificationCodeError };
+    }
+
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.auth.verifyOtp({
-          email,
+          email: email.trim().toLowerCase(),
           token: code,
           type: 'signup'
         });
@@ -838,7 +850,14 @@ export const KredoAuth = {
 
   resendSignupCode: async (email: string, lang: Language = 'ua'): Promise<{ success: boolean; error?: string }> => {
     if (!isSupabaseConfigured || !supabase) {
-      return { success: true };
+      return {
+        success: false,
+        error: lang === 'ua'
+          ? 'Повторне надсилання коду недоступне без підключення Supabase.'
+          : lang === 'ru'
+            ? 'Повторная отправка кода недоступна без подключения Supabase.'
+            : 'Resending the code requires a configured Supabase project.',
+      };
     }
     try {
       const { error } = await supabase.auth.resend({
