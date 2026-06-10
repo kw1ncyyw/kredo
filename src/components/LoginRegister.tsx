@@ -9,6 +9,7 @@ import { i18nDict } from '../messages';
 import { ShieldAlert, Key, Mail, User, Phone, CheckCircle, Globe, RefreshCw, Lock, LayoutDashboard, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { KredoAuth } from '../supabase';
+import { formatNationalPhone, PHONE_COUNTRIES } from '../phoneCountries';
 
 interface LoginRegisterProps {
   setRoute: (route: RoutePath) => void;
@@ -49,7 +50,7 @@ export default function LoginRegister({
   const [fullName, setFullName] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phoneNational, setPhoneNational] = useState('');
   const [country, setCountry] = useState('Ukraine');
   const [rememberMe, setRememberMe] = useState(true);
   const [verificationCode, setVerificationCode] = useState('');
@@ -59,6 +60,13 @@ export default function LoginRegister({
   const [mfaFactorId, setMfaFactorId] = useState('');
   const [mfaCode, setMfaCode] = useState('');
   const emailOtpIsValid = verificationCode.length === 6 || verificationCode.length === 8;
+  const selectedPhoneCountry = PHONE_COUNTRIES.find((item) => item.name === country) || PHONE_COUNTRIES[0];
+  const countryDisplayNames = new Intl.DisplayNames(
+    [lang === 'ua' ? 'uk' : lang],
+    { type: 'region' },
+  );
+  const phoneDigits = phoneNational.replace(/\D/g, '');
+  const fullPhoneNumber = `${selectedPhoneCountry.dialCode}${phoneDigits}`;
 
   // CAPTCHA states
   const [captchaCode, setCaptchaCode] = useState('');
@@ -152,8 +160,15 @@ export default function LoginRegister({
         tempErrors.confirmPassword = t.auth.matchError;
       }
 
-      if (!fullName) {
+      if (!firstName.trim() || !lastName.trim()) {
         tempErrors.fullName = t.auth.requiredError;
+      }
+
+      if (
+        phoneDigits.length < selectedPhoneCountry.minDigits
+        || phoneDigits.length > selectedPhoneCountry.maxDigits
+      ) {
+        tempErrors.phone = tr.phoneInvalidError;
       }
     }
 
@@ -202,7 +217,15 @@ export default function LoginRegister({
           generateCaptcha();
         }
       } else if (viewState === 'register') {
-        const response = await KredoAuth.signUp(email, password, fullName, phone, country, lang);
+        const response = await KredoAuth.signUp(
+          email,
+          password,
+          firstName.trim(),
+          lastName.trim(),
+          fullPhoneNumber,
+          country,
+          lang,
+        );
         if (response.success && response.user && response.emailSent) {
           setAuthSuccessMsg(tr.accountCreated);
           setTimer(60);
@@ -431,21 +454,56 @@ export default function LoginRegister({
                 }`}>
                   {t.auth.phoneLabel}
                 </label>
-                <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-                  <input
-                    type="tel"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="+380 00 000 00 00"
-                    disabled={loading}
-                    className={`w-full text-xs font-semibold pl-10 pr-4 py-3 rounded-xl border transition-all ${
-                      theme === 'dark'
-                        ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
-                        : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
-                    }`}
-                  />
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(9rem,1fr)_minmax(0,1.25fr)]">
+                  <div className="relative">
+                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 pointer-events-none" />
+                    <select
+                      value={country}
+                      onChange={(e) => {
+                        setCountry(e.target.value);
+                        setErrors((current) => ({ ...current, phone: '' }));
+                      }}
+                      disabled={loading}
+                      aria-label={tr.countryCodeLabel}
+                      className={`w-full appearance-none rounded-xl border py-3 pl-9 pr-2 text-xs font-semibold ${
+                        theme === 'dark'
+                          ? 'bg-stone-950 border-stone-900 text-white'
+                          : 'bg-stone-50 border-stone-200 text-stone-900'
+                      }`}
+                    >
+                      {PHONE_COUNTRIES.map((item) => (
+                        <option key={item.iso} value={item.name}>
+                          {countryDisplayNames.of(item.iso) || item.name} ({item.iso}) {item.dialCode}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="relative">
+                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
+                    <input
+                      type="tel"
+                      required
+                      inputMode="tel"
+                      autoComplete="tel-national"
+                      value={phoneNational}
+                      onChange={(e) => {
+                        setPhoneNational(formatNationalPhone(e.target.value));
+                        setErrors((current) => ({ ...current, phone: '' }));
+                      }}
+                      placeholder={tr.phonePlaceholder}
+                      disabled={loading}
+                      className={`w-full text-xs font-semibold pl-10 pr-4 py-3 rounded-xl border transition-all ${
+                        theme === 'dark'
+                          ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
+                          : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
+                      } ${errors.phone ? 'border-red-500 focus:border-red-500' : ''}`}
+                    />
+                  </div>
                 </div>
+                <p className="mt-1.5 text-[10px] font-semibold text-stone-500">
+                  {countryDisplayNames.of(selectedPhoneCountry.iso) || selectedPhoneCountry.name} {selectedPhoneCountry.dialCode}
+                </p>
+                {errors.phone && <p className="mt-1 text-[10px] font-semibold text-red-500">{errors.phone}</p>}
               </div>
             )}
 
@@ -532,37 +590,6 @@ export default function LoginRegister({
                   </button>
                 </div>
                 {errors.confirmPassword && <p className="text-[10px] text-red-500 font-semibold mt-1">{errors.confirmPassword}</p>}
-              </div>
-            )}
-
-            {/* Country (Register only) */}
-            {viewState === 'register' && (
-              <div>
-                <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${
-                  theme === 'dark' ? 'text-stone-500' : 'text-stone-400'
-                }`}>
-                  {t.auth.countryLabel}
-                </label>
-                <div className="relative">
-                  <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 pointer-events-none" />
-                  <select
-                    id="auth-country"
-                    value={country}
-                    onChange={(e) => setCountry(e.target.value)}
-                    disabled={loading}
-                    className={`w-full text-xs font-semibold pl-10 pr-4 py-3 rounded-xl border appearance-none transition-all ${
-                      theme === 'dark'
-                        ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
-                        : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
-                    }`}
-                  >
-                    <option value="Ukraine">{lang === 'ua' ? 'Україна' : lang === 'ru' ? 'Украина' : 'Ukraine'}</option>
-                    <option value="United Kingdom">{lang === 'ua' ? 'Велика Британія' : lang === 'ru' ? 'Великобритания' : 'United Kingdom'}</option>
-                    <option value="United States">{lang === 'ua' ? 'Сполучені Штати' : lang === 'ru' ? 'Соединённые Штаты' : 'United States'}</option>
-                    <option value="Germany">{lang === 'ua' ? 'Німеччина' : lang === 'ru' ? 'Германия' : 'Germany'}</option>
-                    <option value="Poland">{lang === 'ua' ? 'Польща' : lang === 'ru' ? 'Польша' : 'Poland'}</option>
-                  </select>
-                </div>
               </div>
             )}
 

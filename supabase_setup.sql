@@ -7,9 +7,12 @@
 -- -------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
+    email TEXT NOT NULL,
     first_name TEXT,
     last_name TEXT,
+    phone TEXT,
+    organization_name TEXT DEFAULT '',
+    country TEXT DEFAULT 'Ukraine',
     role TEXT DEFAULT 'user' CHECK (role IN ('user', 'admin')),
     email_verified BOOLEAN DEFAULT FALSE,
     kyc_status TEXT DEFAULT 'Not Started' CHECK (kyc_status IN ('Not Started', 'Pending Review', 'Verified', 'Rejected')),
@@ -21,11 +24,20 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS email TEXT,
   ADD COLUMN IF NOT EXISTS first_name TEXT,
   ADD COLUMN IF NOT EXISTS last_name TEXT,
+  ADD COLUMN IF NOT EXISTS phone TEXT,
+  ADD COLUMN IF NOT EXISTS organization_name TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS country TEXT DEFAULT 'Ukraine',
   ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
   ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS kyc_status TEXT DEFAULT 'Not Started',
   ADD COLUMN IF NOT EXISTS kyc_notes TEXT,
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+
+-- Supabase Auth is the source of truth for unique account emails.
+-- Removing this legacy uniqueness constraint prevents unrelated historical
+-- profile rows from reserving an email, without deleting any existing data.
+ALTER TABLE public.profiles
+  DROP CONSTRAINT IF EXISTS profiles_email_key;
 
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
@@ -37,6 +49,21 @@ AS $$
   SELECT EXISTS (
     SELECT 1 FROM public.profiles
     WHERE id = auth.uid() AND role = 'admin'
+  );
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_current_user_email_confirmed()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT EXISTS (
+    SELECT 1
+    FROM auth.users
+    WHERE id = auth.uid()
+      AND email_confirmed_at IS NOT NULL
   );
 $$;
 
@@ -53,7 +80,15 @@ BEGIN
   IF NEW.id IS DISTINCT FROM OLD.id
      OR NEW.email IS DISTINCT FROM OLD.email
      OR NEW.role IS DISTINCT FROM OLD.role
-     OR NEW.email_verified IS DISTINCT FROM OLD.email_verified
+     OR (
+       NEW.email_verified IS DISTINCT FROM OLD.email_verified
+       AND NOT (
+         COALESCE(OLD.email_verified, FALSE) = FALSE
+         AND NEW.email_verified = TRUE
+         AND auth.uid() = OLD.id
+         AND public.is_current_user_email_confirmed()
+       )
+     )
      OR NEW.kyc_status IS DISTINCT FROM OLD.kyc_status
      OR NEW.kyc_notes IS DISTINCT FROM OLD.kyc_notes
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
@@ -83,6 +118,19 @@ ON public.profiles FOR UPDATE
 USING (auth.uid() = id)
 WITH CHECK (auth.uid() = id);
 
+DROP POLICY IF EXISTS "Verified users can create their own profile" ON public.profiles;
+CREATE POLICY "Verified users can create their own profile"
+ON public.profiles FOR INSERT
+TO authenticated
+WITH CHECK (
+  auth.uid() = id
+  AND role = 'user'
+  AND email_verified = TRUE
+  AND kyc_status = 'Not Started'
+  AND email = COALESCE(auth.jwt()->>'email', '')
+  AND public.is_current_user_email_confirmed()
+);
+
 DROP POLICY IF EXISTS "System/Admins can read all profiles" ON public.profiles;
 CREATE POLICY "System/Admins can read all profiles" 
 ON public.profiles FOR ALL 
@@ -90,7 +138,8 @@ TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
 
--- Profile trigger on user signup in Auth schema
+-- Legacy helper retained for compatibility only.
+-- Profiles are finalized by the client after a successful signup OTP verification.
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -109,9 +158,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-CREATE OR REPLACE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+-- Remove the old eager profile trigger without touching existing profile rows.
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 
 
 -- -------------------------------------------------------------
@@ -228,7 +276,6 @@ CREATE TABLE IF NOT EXISTS public.contact_requests (
     email TEXT NOT NULL,
     topic TEXT NOT NULL,
     message TEXT NOT NULL,
-    destination_email TEXT NOT NULL,
     status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'resolved')),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
@@ -238,9 +285,24 @@ ALTER TABLE public.contact_requests
   ADD COLUMN IF NOT EXISTS email TEXT,
   ADD COLUMN IF NOT EXISTS topic TEXT,
   ADD COLUMN IF NOT EXISTS message TEXT,
-  ADD COLUMN IF NOT EXISTS destination_email TEXT,
   ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+
+-- Keep a legacy destination_email column if it already exists, but do not require or populate it.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'contact_requests'
+      AND column_name = 'destination_email'
+  ) THEN
+    ALTER TABLE public.contact_requests
+      ALTER COLUMN destination_email DROP NOT NULL;
+  END IF;
+END;
+$$;
 
 -- Turn on RLS for contact_requests
 ALTER TABLE public.contact_requests ENABLE ROW LEVEL SECURITY;
@@ -250,7 +312,6 @@ CREATE POLICY "Anyone can submit contact requests"
 ON public.contact_requests FOR INSERT
 WITH CHECK (
   status = 'pending'
-  AND destination_email = 'kredo.support.ua@gmail.com'
   AND char_length(name) BETWEEN 1 AND 100
   AND char_length(email) BETWEEN 3 AND 254
   AND char_length(topic) BETWEEN 1 AND 100
@@ -443,3 +504,9 @@ CREATE POLICY "Admins can manage all transactions"
 ON public.transactions FOR ALL TO authenticated
 USING (public.is_admin())
 WITH CHECK (public.is_admin());
+
+-- Diagnostic only. Review manually before deleting anything:
+-- SELECT p.*
+-- FROM public.profiles AS p
+-- LEFT JOIN auth.users AS u ON u.id = p.id
+-- WHERE u.id IS NULL;

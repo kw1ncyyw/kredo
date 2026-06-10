@@ -14,6 +14,8 @@ import {
   KeyRound,
   Loader2,
   Lock,
+  Mail,
+  Send,
   ShieldCheck,
   Smartphone,
   X,
@@ -59,6 +61,10 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState('');
   const [passwordError, setPasswordError] = useState('');
+  const [emailActionLoading, setEmailActionLoading] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
+  const [emailError, setEmailError] = useState('');
+  const [resetLoading, setResetLoading] = useState(false);
 
   const [factors, setFactors] = useState<KredoMfaFactor[]>([]);
   const [mfaLoading, setMfaLoading] = useState(true);
@@ -111,6 +117,44 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
     setPasswordVisibility((current) => current.map((visible, itemIndex) => (
       itemIndex === index ? !visible : visible
     )));
+  };
+
+  const resendEmailConfirmation = async () => {
+    setEmailActionLoading(true);
+    setEmailMessage('');
+    setEmailError('');
+    try {
+      const result = await KredoAuth.resendSignupCode(user.email, lang);
+      if (result.success) {
+        setEmailMessage(t.confirmationEmailSent);
+      } else {
+        setEmailError(result.error || t.confirmationEmailError);
+      }
+    } catch (error) {
+      console.error('Email confirmation resend failed:', error);
+      setEmailError(t.confirmationEmailError);
+    } finally {
+      setEmailActionLoading(false);
+    }
+  };
+
+  const sendPasswordReset = async () => {
+    setResetLoading(true);
+    setPasswordMessage('');
+    setPasswordError('');
+    try {
+      const result = await KredoAuth.resetPassword(user.email, lang);
+      if (result.success) {
+        setPasswordMessage(t.passwordResetSent);
+      } else {
+        setPasswordError(result.error || t.unexpectedError);
+      }
+    } catch (error) {
+      console.error('Password reset email failed:', error);
+      setPasswordError(t.unexpectedError);
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   const handlePasswordChange = async (event: React.FormEvent) => {
@@ -288,6 +332,40 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
           </div>
         )}
 
+        <section className={`rounded-[28px] border p-5 sm:p-7 ${cardClass}`}>
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="rounded-2xl bg-emerald-500/10 p-3 text-emerald-500">
+                <Mail className="h-6 w-6" />
+              </div>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-lg font-black">{t.emailVerification}</h2>
+                  <span className={`rounded-full px-3 py-1 text-xs font-black ${
+                    user.emailVerified ? 'bg-emerald-500/10 text-emerald-500' : 'bg-amber-500/10 text-amber-500'
+                  }`}>
+                    {user.emailVerified ? t.emailConfirmed : t.emailNotConfirmed}
+                  </span>
+                </div>
+                <p className={`mt-1 break-all text-sm ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>{user.email}</p>
+              </div>
+            </div>
+            {!user.emailVerified && (
+              <button
+                type="button"
+                onClick={() => void resendEmailConfirmation()}
+                disabled={emailActionLoading || !isSupabaseConfigured}
+                className="flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-black text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {emailActionLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                {t.confirmEmail}
+              </button>
+            )}
+          </div>
+          {emailMessage && <div className="mt-5"><StatusMessage success text={emailMessage} /></div>}
+          {emailError && <div className="mt-5"><StatusMessage text={emailError} /></div>}
+        </section>
+
         <div className="grid gap-6 xl:grid-cols-2">
           <form onSubmit={handlePasswordChange} className={`rounded-[28px] border p-5 sm:p-7 ${cardClass}`}>
             <div className="mb-6 flex items-start gap-4">
@@ -345,6 +423,19 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
             >
               {passwordLoading && <Loader2 className="h-4 w-4 animate-spin" />}
               {t.btnUpdate}
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendPasswordReset()}
+              disabled={resetLoading || !isSupabaseConfigured}
+              className={`mt-3 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border px-5 py-3 text-sm font-black transition disabled:opacity-50 ${
+                theme === 'dark'
+                  ? 'border-stone-800 text-stone-300 hover:bg-white/5'
+                  : 'border-stone-200 text-stone-700 hover:bg-stone-50'
+              }`}
+            >
+              {resetLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+              {t.forgotPasswordLink}
             </button>
           </form>
 
@@ -464,6 +555,7 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
             </div>
             <div>
               <h2 className="text-lg font-black">{t.activeSessions}</h2>
+              <p className={`mt-1 text-sm font-bold text-emerald-500`}>{t.currentSessionActive}</p>
               <p className={`mt-1 text-sm leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>{t.activeSessionsPlaceholder}</p>
             </div>
           </div>

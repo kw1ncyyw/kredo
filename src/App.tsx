@@ -448,6 +448,24 @@ export default function App() {
       const updated = { ...user, ...profileData };
       setUser(updated);
       localStorage.setItem('safedeal_user', JSON.stringify(updated));
+      if (
+        isSupabaseConfigured
+        && (
+          profileData.fullName !== undefined
+          || profileData.phone !== undefined
+          || profileData.companyName !== undefined
+          || profileData.country !== undefined
+        )
+      ) {
+        void KredoData.updateOwnProfile(user.id, {
+          fullName: updated.fullName,
+          phone: updated.phone,
+          organizationName: updated.companyName || '',
+          country: updated.country,
+        }).then((result) => {
+          if (!result.success) console.error('Profile settings update failed:', result.error);
+        });
+      }
     }
   };
 

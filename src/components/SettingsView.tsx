@@ -28,7 +28,6 @@ export default function SettingsView({
   const t = i18nDict[lang];
 
   // Settings states
-  const [twoFactor, setTwoFactor] = useState(true);
   const [marketing, setMarketing] = useState(false);
 
   // Status alerts
@@ -151,25 +150,6 @@ export default function SettingsView({
             }`}>
             <div className="space-y-4">
               <div className="flex items-center gap-3"><BellRing className="h-5 w-5 text-emerald-500" /><h3 className="text-lg font-black">{lang === 'ua' ? 'Налаштування сповіщень' : lang === 'ru' ? 'Настройки уведомлений' : 'Notification preferences'}</h3></div>
-
-              {/* 2-Factor check toggle */}
-              <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border bg-stone-500/[0.04] border-stone-500/10">
-                <div>
-                  <label className="block text-xs font-bold uppercase tracking-wide tracking-tight">{t.settings.twoFactor}</label>
-                  <span className="text-sm text-stone-500 font-medium block mt-1">{lang === 'ua' ? 'Додатковий захист важливих дій в акаунті.' : lang === 'ru' ? 'Дополнительная защита важных действий в аккаунте.' : 'Extra protection for important account actions.'}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setTwoFactor(!twoFactor)}
-                  className={`px-3 py-1 rounded-md text-[10px] uppercase font-extrabold transition-colors tracking-widest ${
-                    twoFactor
-                      ? 'bg-emerald-500/10 text-emerald-500'
-                      : 'bg-stone-500/10 text-stone-400'
-                  }`}
-                >
-                  {twoFactor ? t.settings.statusActive : t.settings.statusDisabled}
-                </button>
-              </div>
 
               {/* Newsletter Toggle */}
               <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border bg-stone-500/[0.04] border-stone-500/10">

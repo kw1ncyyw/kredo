@@ -111,6 +111,9 @@ type ProfileRow = {
   kyc_notes?: string | null;
   first_name?: string | null;
   last_name?: string | null;
+  phone?: string | null;
+  organization_name?: string | null;
+  country?: string | null;
 };
 
 export type KredoMfaFactor = {
@@ -224,7 +227,7 @@ async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfil
   if (supabase) {
     const { data } = await supabase
       .from('profiles')
-      .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name')
+      .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name,phone,organization_name,country')
       .eq('id', authUser.id)
       .maybeSingle();
     profileRow = data as ProfileRow | null;
@@ -238,8 +241,9 @@ async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfil
     id: authUser.id,
     email: authUser.email || fallback?.email || '',
     fullName: databaseName || authUser.user_metadata?.full_name || fallback?.fullName || authUser.email?.split('@')[0] || '',
-    phone: authUser.user_metadata?.phone || fallback?.phone || '',
-    country: authUser.user_metadata?.country || fallback?.country || 'Ukraine',
+    phone: profileRow?.phone || authUser.user_metadata?.phone || fallback?.phone || '',
+    companyName: profileRow?.organization_name || fallback?.companyName || '',
+    country: profileRow?.country || authUser.user_metadata?.country || fallback?.country || 'Ukraine',
     emailVerified,
     verified: kycStatus === 'Verified',
     joinedAt: authUser.created_at?.split('T')[0] || fallback?.joinedAt || new Date().toISOString().split('T')[0],
@@ -444,7 +448,8 @@ export const KredoAuth = {
   signUp: async (
     email: string,
     password: string,
-    fullName: string,
+    firstName: string,
+    lastName: string,
     phone: string,
     country: string,
     lang: Language = 'ua'
@@ -460,9 +465,9 @@ export const KredoAuth = {
           password: password,
           options: {
             data: {
-              full_name: fullName.trim(),
-              first_name: fullName.trim().split(/\s+/)[0] || '',
-              last_name: fullName.trim().split(/\s+/).slice(1).join(' '),
+              full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
+              first_name: firstName.trim(),
+              last_name: lastName.trim(),
               phone: phone.trim(),
               country: country,
             },
@@ -478,7 +483,7 @@ export const KredoAuth = {
           const profile: UserProfile = {
             id: data.user.id,
             email: data.user.email || cleanedEmail,
-            fullName: fullName.trim(),
+            fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
             phone: phone.trim(),
             country: country,
             verified: false,
@@ -830,6 +835,37 @@ export const KredoAuth = {
         if (!data.user) {
           return { success: false, error: t.auth.identityFailed };
         }
+
+        const metadata = data.user.user_metadata || {};
+        const firstName = String(metadata.first_name || '').trim();
+        const lastName = String(metadata.last_name || '').trim();
+        const phone = String(metadata.phone || '').trim();
+        const country = String(metadata.country || 'Ukraine').trim();
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: data.user.id,
+            email: data.user.email || email.trim().toLowerCase(),
+            first_name: firstName,
+            last_name: lastName,
+            phone,
+            organization_name: '',
+            country,
+            role: 'user',
+            email_verified: true,
+            kyc_status: 'Not Started',
+          }, { onConflict: 'id' });
+        if (profileError) {
+          console.error('Verified user profile creation failed:', profileError);
+          return {
+            success: false,
+            error: lang === 'ua'
+              ? 'Email підтверджено, але не вдалося створити профіль. Спробуйте увійти повторно.'
+              : lang === 'ru'
+                ? 'Email подтверждён, но не удалось создать профиль. Попробуйте войти снова.'
+                : 'Email was verified, but the profile could not be created. Please sign in again.',
+          };
+        }
         const profile = await buildSupabaseProfile(data.user);
         localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
         return { success: true, user: profile };
@@ -874,12 +910,32 @@ export const KredoAuth = {
 };
 
 export const KredoData = {
+  updateOwnProfile: async (userId: string, profile: {
+    fullName: string;
+    phone: string;
+    organizationName: string;
+    country: string;
+  }) => {
+    if (!supabase) return { success: false, error: 'not_configured' };
+    const names = profile.fullName.trim().split(/\s+/);
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        first_name: names[0] || '',
+        last_name: names.slice(1).join(' '),
+        phone: profile.phone.trim(),
+        organization_name: profile.organizationName.trim(),
+        country: profile.country.trim(),
+      })
+      .eq('id', userId);
+    return error ? { success: false, error: error.message } : { success: true };
+  },
+
   submitContactRequest: async (request: {
     name: string;
     email: string;
     topic: string;
     message: string;
-    destination_email: string;
   }) => {
     if (!supabase) return { success: false, error: 'not_configured' };
     const { error } = await supabase.from('contact_requests').insert({

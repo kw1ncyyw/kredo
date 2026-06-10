@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme, UserProfile } from '../types';
 import { i18nDict } from '../messages';
-import { ShieldCheck, FileText, Camera, Upload, CheckCircle2, ChevronRight, AlertCircle, Mail, UserRound, BadgeCheck, CalendarDays, Pencil } from 'lucide-react';
+import { ShieldCheck, FileText, Camera, Upload, CheckCircle2, ChevronRight, AlertCircle, Mail, Phone, Building2, UserRound, BadgeCheck, CalendarDays, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface UserProfileProps {
@@ -53,11 +53,11 @@ export default function UserProfileSettings({
       personalInfo: 'Особиста інформація',
       accountEmail: 'Email акаунта',
       verificationStatus: 'Статус верифікації',
-      accountRole: 'Роль акаунта',
+      fullNameCard: 'Повне ім’я',
+      phoneCard: 'Номер телефону',
+      organizationCard: 'Організація',
       createdDate: 'Дата створення',
       editDetails: 'Редагувати дані',
-      userRole: 'Користувач',
-      adminRole: 'Адміністратор',
     },
     en: {
       subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -83,11 +83,11 @@ export default function UserProfileSettings({
       personalInfo: 'Personal information',
       accountEmail: 'Account email',
       verificationStatus: 'Verification status',
-      accountRole: 'Account role',
+      fullNameCard: 'Full name',
+      phoneCard: 'Phone number',
+      organizationCard: 'Organization',
       createdDate: 'Created date',
       editDetails: 'Edit details',
-      userRole: 'User',
-      adminRole: 'Administrator',
     },
     ru: {
       subtitle: 'Обновляйте ваши реквизиты для корректного формирования эскроу-соглашений и квитанций.',
@@ -113,11 +113,11 @@ export default function UserProfileSettings({
       personalInfo: 'Личная информация',
       accountEmail: 'Email аккаунта',
       verificationStatus: 'Статус верификации',
-      accountRole: 'Роль аккаунта',
+      fullNameCard: 'Полное имя',
+      phoneCard: 'Номер телефона',
+      organizationCard: 'Организация',
       createdDate: 'Дата создания',
       editDetails: 'Редактировать данные',
-      userRole: 'Пользователь',
-      adminRole: 'Администратор',
     }
   }[lang] || {
     subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -143,11 +143,11 @@ export default function UserProfileSettings({
     personalInfo: 'Personal information',
     accountEmail: 'Account email',
     verificationStatus: 'Verification status',
-    accountRole: 'Account role',
+    fullNameCard: 'Full name',
+    phoneCard: 'Phone number',
+    organizationCard: 'Organization',
     createdDate: 'Created date',
     editDetails: 'Edit details',
-    userRole: 'User',
-    adminRole: 'Administrator',
   };
 
   // Form states
@@ -216,11 +216,13 @@ export default function UserProfileSettings({
           </button>
         </div>
 
-        <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {[
             { label: kycLoc.accountEmail, value: user.email, icon: Mail },
+            { label: kycLoc.fullNameCard, value: user.fullName, icon: UserRound },
+            { label: kycLoc.phoneCard, value: user.phone, icon: Phone },
+            { label: kycLoc.organizationCard, value: user.companyName, icon: Building2 },
             { label: kycLoc.verificationStatus, value: user.verified ? kycLoc.verifiedPartner : kycLoc.actionReq, icon: BadgeCheck },
-            { label: kycLoc.accountRole, value: user.role === 'admin' ? kycLoc.adminRole : kycLoc.userRole, icon: UserRound },
             { label: kycLoc.createdDate, value: user.joinedAt, icon: CalendarDays },
           ].map(({ label, value, icon: Icon }) => (
             <article key={label} className={`rounded-3xl border p-5 ${

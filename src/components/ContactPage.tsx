@@ -172,7 +172,6 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
               email: trimmedEmail,
               topic: trimmedTopic,
               message: trimmedMessage,
-              destination_email: 'kredo.support.ua@gmail.com',
             }),
             new Promise<{ success: false; error: string }>((resolve) => {
               window.setTimeout(() => resolve({ success: false, error: 'timeout' }), 5000);

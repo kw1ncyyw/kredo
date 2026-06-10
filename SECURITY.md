@@ -18,11 +18,13 @@ The repository ignores `.env`, `.env.local`, `node_modules`, and `dist`. Keep `.
 
 RLS must remain enabled on:
 
-- `profiles`: authenticated users may select their own row and update only safe profile fields (`first_name` and `last_name`). Only admins may read or manage all profiles. A trigger prevents users from changing ownership, email, role, verification state, KYC state, or timestamps.
+- `profiles`: verified authenticated users create their own row only after signup OTP verification. Users may select their own row and update safe identity fields (`first_name`, `last_name`, `phone`, `organization_name`, and `country`). Only admins may read or manage all profiles. A trigger prevents users from changing ownership, role, KYC state, or timestamps.
 - `kyc_requests`: users may create/read their own request. Resubmission must remain owned by the same user and reset to `Pending Review` without admin notes. Admins may read/update all requests.
 - `notifications`: users may read their own rows and update only `is_read`. A trigger rejects changes to ownership or notification content. Admin-controlled processes create notifications.
 - `contact_requests`: anonymous and authenticated visitors may insert validated pending requests, but only admins may read or update them.
 - `transactions`: only the buyer, seller, or an admin may read a transaction. Financial writes are admin/server controlled; use a trusted Edge Function or backend workflow for participant actions.
+
+Contact requests are independent records. Contact form code must never call Supabase Auth or insert into `profiles`; submitting a support email cannot reserve that email for registration.
 
 Admin status is determined only from `profiles.role = 'admin'`. Never trust route names, local storage, user metadata, or client-provided role values for authorization.
 
