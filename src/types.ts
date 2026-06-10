@@ -17,6 +17,7 @@ export type RoutePath =
   | 'contact'
   | 'login'
   | 'register'
+  | 'reset-password'
   | 'dashboard'
   | 'create-deal'
   | 'transactions'

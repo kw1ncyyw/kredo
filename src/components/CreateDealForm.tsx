@@ -6,8 +6,7 @@
 import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme, EscrowDeal, DealRole } from '../types';
 import { i18nDict } from '../messages';
-import { Sparkles, HelpCircle, AlertCircle, CheckCircle, ArrowRightLeft } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Sparkles, HelpCircle, AlertCircle, CheckCircle, ArrowRightLeft, PackageCheck, FileSignature, WalletCards } from 'lucide-react';
 
 interface CreateDealFormProps {
   lang: Language;
@@ -23,13 +22,21 @@ const formT = {
     categories: ['Цифрові товари', 'Фріланс', 'Домени', 'Транспортні засоби', 'Послуги', 'Інша комерція'],
     whoPaysFee: 'Хто сплачує комісію KREDO?',
     half: 'Поділено 50/50 (Рекомендовано)',
-    buyerPaysAll: 'Сплачує покупець (2.5%)',
-    sellerPaysAll: 'Сплачує продавець (2.5%)',
+    buyerPaysAll: 'Сплачує покупець (2%)',
+    sellerPaysAll: 'Сплачує продавець (2%)',
     feeSettlementTitle: 'Розрахунок комісії та розрахунки',
+    guidedTitle: 'Параметри безпечної угоди',
+    guidedText: 'Заповніть основні дані. Перед створенням ви побачите повний розрахунок платежу.',
+    dealType: 'Тип угоди',
+    assetDetails: 'Що продається або купується',
+    counterparty: 'Інша сторона угоди',
+    terms: 'Умови угоди',
+    commission: 'Комісія KREDO',
+    expectedPayment: 'Очікуваний платіж',
     transparentMetrics: 'Прозора оцінка та розрахунки',
     baseEscrowAmount: 'Базова сума ескроу',
-    totalEscrowFee: 'Комісія за ескроу-сервіс (2.5%)',
-    feeDisclaimer: (minFeeStr: string) => `Комісія розраховується автоматично за ставкою 2.5%. Мінімальна вартість проведення ескроу-угоди становить ${minFeeStr}.`,
+    totalEscrowFee: 'Комісія за ескроу-сервіс (2%)',
+    feeDisclaimer: (minFeeStr: string) => `Комісія розраховується автоматично за ставкою 2%. Мінімальна вартість проведення ескроу-угоди становить ${minFeeStr}.`,
     buyerShare: 'Частка Покупця',
     sellerShare: 'Частка Продавця',
     totalBuyerPays: 'Всього до сплати Покупцем:',
@@ -43,13 +50,21 @@ const formT = {
     categories: ['Digital products', 'Freelance', 'Domains', 'Vehicles', 'Services', 'E-commerce'],
     whoPaysFee: 'Who Pays KREDO Fee?',
     half: 'Divided 50/50 (Recommended)',
-    buyerPaysAll: 'Buyer Pays All (2.5%)',
-    sellerPaysAll: 'Seller Pays All (2.5%)',
+    buyerPaysAll: 'Buyer Pays All (2%)',
+    sellerPaysAll: 'Seller Pays All (2%)',
     feeSettlementTitle: 'Fee Calculation & Settlement',
+    guidedTitle: 'Secure deal details',
+    guidedText: 'Complete the key details. You will see the full payment calculation before creating the deal.',
+    dealType: 'Deal type',
+    assetDetails: 'What is being bought or sold',
+    counterparty: 'Other party',
+    terms: 'Deal terms',
+    commission: 'KREDO commission',
+    expectedPayment: 'Expected payment',
     transparentMetrics: 'Transparent Valuation Metrics',
     baseEscrowAmount: 'Base Escrow Amount',
-    totalEscrowFee: 'Total Escrow Fee (2.5%)',
-    feeDisclaimer: (minFeeStr: string) => `Fees are calculated automatically using our standard flat 2.5% rate. The minimum agreement processing charge is ${minFeeStr}.`,
+    totalEscrowFee: 'Escrow service commission (2%)',
+    feeDisclaimer: (minFeeStr: string) => `Fees are calculated automatically using our 2% rate. The minimum agreement processing charge is ${minFeeStr}.`,
     buyerShare: 'Buyer Share',
     sellerShare: 'Seller Share',
     totalBuyerPays: 'Total Buyer Pays:',
@@ -63,13 +78,21 @@ const formT = {
     categories: ['Цифровые товары', 'Фриланс', 'Домены', 'Транспорт', 'Услуги', 'Другая коммерция'],
     whoPaysFee: 'Кто оплачивает комиссию KREDO?',
     half: 'Разделено 50/50 (Рекомендовано)',
-    buyerPaysAll: 'Оплачивает покупатель (2.5%)',
-    sellerPaysAll: 'Оплачивает продавец (2.5%)',
+    buyerPaysAll: 'Оплачивает покупатель (2%)',
+    sellerPaysAll: 'Оплачивает продавец (2%)',
     feeSettlementTitle: 'Расчет комиссии и взаиморасчеты',
+    guidedTitle: 'Параметры безопасной сделки',
+    guidedText: 'Заполните основные данные. Перед созданием вы увидите полный расчет платежа.',
+    dealType: 'Тип сделки',
+    assetDetails: 'Что продается или покупается',
+    counterparty: 'Другая сторона сделки',
+    terms: 'Условия сделки',
+    commission: 'Комиссия KREDO',
+    expectedPayment: 'Ожидаемый платеж',
     transparentMetrics: 'Прозрачная оценка и взаиморасчеты',
     baseEscrowAmount: 'Базовая сумма эскроу',
-    totalEscrowFee: 'Комиссия за эскроу-сервис (2.5%)',
-    feeDisclaimer: (minFeeStr: string) => `Комиссия рассчитывается автоматически по ставке 2.5%. Минимальная стоимость проведения эскроу-сделки составляет ${minFeeStr}.`,
+    totalEscrowFee: 'Комиссия за эскроу-сервис (2%)',
+    feeDisclaimer: (minFeeStr: string) => `Комиссия рассчитывается автоматически по ставке 2%. Минимальная стоимость проведения эскроу-сделки составляет ${minFeeStr}.`,
     buyerShare: 'Доля Покупателя',
     sellerShare: 'Доля Продавца',
     totalBuyerPays: 'Всего к оплате Покупателем:',
@@ -106,7 +129,7 @@ export default function CreateDealForm({
 
   // Fee estimations
   const numericAmount = amount ? Number(amount) : 0;
-  const standardFee = Math.max(numericAmount * 0.025, 15); // 2.5% or min $15
+  const standardFee = Math.max(numericAmount * 0.02, 15); // 2% or minimum fee
   const buyerFeeAmount = feePayer === 'buyer' ? standardFee : feePayer === 'half' ? standardFee / 2 : 0;
   const sellerFeeAmount = feePayer === 'seller' ? standardFee : feePayer === 'half' ? standardFee / 2 : 0;
   
@@ -161,26 +184,35 @@ export default function CreateDealForm({
 
   return (
     <div className={theme === 'dark' ? 'text-stone-100' : 'text-stone-900'}>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         
         {/* Title parameters */}
-        <div className="mb-10 text-center sm:text-left">
+        <div className={`mb-8 rounded-[2rem] border p-6 sm:p-8 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+        }`}>
           <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${
             theme === 'dark' ? 'text-white' : 'text-stone-950'
           }`}>
             {t.createForm.title}
           </h1>
-          <p className={`text-xs sm:text-sm mt-1.5 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-500'}`}>
+          <p className={`text-sm mt-2 max-w-2xl leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
             {t.createForm.subtitle}
           </p>
+          <div className="mt-5 flex items-start gap-3 rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.06] p-4">
+            <FileSignature className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
+            <div>
+              <p className="text-sm font-bold">{tr.guidedTitle}</p>
+              <p className="mt-1 text-sm leading-6 text-stone-500">{tr.guidedText}</p>
+            </div>
+          </div>
         </div>
 
         {/* Create Deal Wrapper */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
           {/* Main Form Fields section */}
-          <form onSubmit={handleCreate} className={`lg:col-span-3 rounded-2xl p-6 sm:p-8 border space-y-5 ${
-            theme === 'dark' ? 'bg-[#080808] border-stone-900 shadow-md' : 'bg-white border-stone-200 shadow-sm'
+          <form onSubmit={handleCreate} className={`lg:col-span-3 rounded-[2rem] p-6 sm:p-8 border space-y-7 ${
+            theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-[0_20px_60px_-42px_rgba(5,150,105,0.35)]'
           }`}>
             
             {/* Show success / error messages */}
@@ -198,6 +230,11 @@ export default function CreateDealForm({
               </div>
             )}
 
+            <div className="flex items-center gap-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500"><PackageCheck className="h-5 w-5" /></span>
+              <h2 className="text-lg font-black">{tr.assetDetails}</h2>
+            </div>
+
             {/* Title / Description */}
             <div className="space-y-4">
               <div>
@@ -213,7 +250,7 @@ export default function CreateDealForm({
                   placeholder={t.createForm.dealTitlePl}
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className={`w-full text-xs font-semibold px-4 py-3 rounded-xl border transition-all ${
+                  className={`w-full text-sm font-semibold px-4 py-3.5 rounded-xl border transition-all ${
                     theme === 'dark'
                       ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
                       : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
@@ -235,7 +272,7 @@ export default function CreateDealForm({
                   placeholder={t.createForm.descriptionPl}
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className={`w-full text-xs font-semibold px-4 py-3 rounded-xl border transition-all resize-none ${
+                  className={`w-full text-sm font-semibold px-4 py-3.5 rounded-xl border transition-all resize-none ${
                     theme === 'dark'
                       ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
                       : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
@@ -246,6 +283,7 @@ export default function CreateDealForm({
 
             <hr className={`my-4 ${theme === 'dark' ? 'border-stone-900' : 'border-stone-100'}`} />
 
+            <h2 className="text-lg font-black">{tr.dealType}</h2>
             {/* Role of user */}
             <div>
               <label className={`block text-xs font-bold uppercase tracking-wider mb-2.5 ${
@@ -291,6 +329,7 @@ export default function CreateDealForm({
               </div>
             </div>
 
+            <h2 className="text-lg font-black">{tr.counterparty}</h2>
             {/* Counterparty settings */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -336,6 +375,7 @@ export default function CreateDealForm({
               </div>
             </div>
 
+            <h2 className="text-lg font-black">{tr.terms}</h2>
             {/* Value, Duration & Category */}
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <div>
@@ -455,7 +495,7 @@ export default function CreateDealForm({
             <button
               id="submit-deal-btn"
               type="submit"
-              className={`w-full py-4 rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.01] ${
+              className={`w-full py-4 rounded-xl text-sm font-bold transition-all shadow-md hover:-translate-y-0.5 ${
                 theme === 'dark'
                   ? 'bg-white text-black hover:bg-stone-100'
                   : 'bg-black text-white hover:bg-stone-900'
@@ -474,8 +514,8 @@ export default function CreateDealForm({
               {tr.feeSettlementTitle}
             </h3>
 
-            <div className={`rounded-2xl p-6 border ${
-              theme === 'dark' ? 'bg-[#080808]/40 border-stone-900' : 'bg-white border-stone-200 shadow-sm'
+            <div className={`sticky top-28 rounded-[2rem] p-6 border ${
+              theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-[0_20px_60px_-42px_rgba(5,150,105,0.35)]'
             }`}>
               <div className="flex items-center space-x-2 text-stone-400 text-[10px] font-bold tracking-tight uppercase mb-4">
                 <Sparkles className="h-4 w-4" />
@@ -486,6 +526,19 @@ export default function CreateDealForm({
                 <div className="flex justify-between items-center pb-3 border-b border-stone-500/10">
                   <span className={`${theme === 'dark' ? 'text-stone-400' : 'text-stone-500'}`}>{tr.baseEscrowAmount}</span>
                   <span className="font-semibold">{formatMoney(numericAmount)}</span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-emerald-500/15 bg-emerald-500/[0.06] p-4">
+                    <WalletCards className="h-5 w-5 text-emerald-500" />
+                    <p className="mt-3 text-xs text-stone-500">{tr.commission}</p>
+                    <p className="mt-1 text-lg font-black">{formatMoney(standardFee)}</p>
+                  </div>
+                  <div className="rounded-2xl border border-stone-500/10 bg-stone-500/[0.04] p-4">
+                    <Sparkles className="h-5 w-5 text-emerald-500" />
+                    <p className="mt-3 text-xs text-stone-500">{tr.expectedPayment}</p>
+                    <p className="mt-1 text-lg font-black">{formatMoney(role === 'buyer' ? totalBuyerPays : totalSellerReceives)}</p>
+                  </div>
                 </div>
 
                 <div className="flex justify-between items-center pb-3 border-b border-stone-500/10">

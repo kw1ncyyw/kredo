@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Bell, ChevronRight, CircleUserRound, CreditCard, Headphones, Plus, ShieldCheck, ShieldAlert } from 'lucide-react';
 import { RoutePath, Language, AppTheme, UserProfile, EscrowDeal, SystemNotification } from '../types';
 import { i18nDict } from '../messages';
@@ -27,11 +27,16 @@ export default function Dashboard({
   theme,
 }: DashboardProps) {
   const t = i18nDict[lang];
-  const activeDeals = deals.filter((deal) => !['released', 'cancelled'].includes(deal.status));
-  const activeVolume = activeDeals.reduce((sum, deal) => sum + deal.amount, 0);
+  const { activeDeals, activeVolume } = useMemo(() => {
+    const active = deals.filter((deal) => !['released', 'cancelled'].includes(deal.status));
+    return {
+      activeDeals: active,
+      activeVolume: active.reduce((sum, deal) => sum + deal.amount, 0),
+    };
+  }, [deals]);
   const premiumCard = theme === 'dark'
-    ? 'bg-[#121212] border-stone-800'
-    : 'bg-white border-stone-200';
+    ? 'bg-[#0d0d0d] border-white/[0.08] shadow-[0_22px_65px_-48px_rgba(52,211,153,0.35)]'
+    : 'bg-white border-stone-200 shadow-[0_22px_65px_-48px_rgba(5,150,105,0.35)]';
   const copy = {
     ua: {
       subtitle: 'Керуйте угодами, верифікацією та підтримкою в одному місці.',
@@ -48,6 +53,7 @@ export default function Dashboard({
       support: 'Звернутися до підтримки',
       transactions: 'Переглянути транзакції',
       empty: 'Нових сповіщень немає.',
+      emptyText: 'Тут з’являться важливі оновлення щодо угод і верифікації.',
     },
     ru: {
       subtitle: 'Управляйте сделками, верификацией и поддержкой в одном месте.',
@@ -64,6 +70,7 @@ export default function Dashboard({
       support: 'Обратиться в поддержку',
       transactions: 'Посмотреть транзакции',
       empty: 'Новых уведомлений нет.',
+      emptyText: 'Здесь появятся важные обновления по сделкам и верификации.',
     },
     en: {
       subtitle: 'Manage deals, verification, and support in one place.',
@@ -80,14 +87,18 @@ export default function Dashboard({
       support: 'Contact support',
       transactions: 'View transactions',
       empty: 'There are no new notifications.',
+      emptyText: 'Important deal and verification updates will appear here.',
     },
   }[lang];
 
-  const money = new Intl.NumberFormat(lang === 'ua' ? 'uk-UA' : lang === 'ru' ? 'ru-RU' : 'en-US', {
-    style: 'currency',
-    currency: 'USD',
-    maximumFractionDigits: 0,
-  }).format(activeVolume);
+  const money = useMemo(() => new Intl.NumberFormat(
+    lang === 'ua' ? 'uk-UA' : lang === 'ru' ? 'ru-RU' : 'en-US',
+    {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    },
+  ).format(activeVolume), [activeVolume, lang]);
 
   const actions = [
     { label: copy.create, route: 'create-deal' as RoutePath, icon: Plus },
@@ -98,7 +109,7 @@ export default function Dashboard({
 
   return (
     <div className={theme === 'dark' ? 'text-white' : 'text-stone-950'}>
-      <div className="mx-auto max-w-[1500px] space-y-8">
+      <div className="mx-auto max-w-[1500px] space-y-7">
         <section className={`rounded-[2rem] border p-8 shadow-sm sm:p-10 ${premiumCard}`}>
           <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <div className="flex items-center gap-5">
@@ -168,9 +179,10 @@ export default function Dashboard({
             </div>
             <div className={`rounded-[2rem] border p-6 shadow-sm ${premiumCard}`}>
               {notifications.length === 0 ? (
-                <div className="flex min-h-40 flex-col items-center justify-center text-center text-stone-500">
-                  <Bell className="mb-3 h-8 w-8" />
-                  <p className="text-base">{copy.empty}</p>
+                <div className="flex min-h-52 flex-col items-center justify-center text-center text-stone-500">
+                  <span className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-emerald-500/10 text-emerald-500"><Bell className="h-6 w-6" /></span>
+                  <p className="text-lg font-black">{copy.empty}</p>
+                  <p className="mt-2 max-w-sm text-sm leading-6">{copy.emptyText}</p>
                 </div>
               ) : notifications.slice(0, 4).map((notification) => (
                 <button key={notification.id} onClick={() => setRoute('notifications')} className={`block w-full border-b py-4 text-left last:border-0 ${

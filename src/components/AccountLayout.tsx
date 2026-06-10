@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Bell,
   CreditCard,
@@ -10,6 +10,7 @@ import {
   User,
 } from 'lucide-react';
 import { AppTheme, Language, RoutePath, SystemNotification, UserProfile } from '../types';
+import { isSupabaseConfigured } from '../supabase';
 
 interface AccountLayoutProps {
   children: React.ReactNode;
@@ -30,8 +31,11 @@ export default function AccountLayout({
   theme,
   lang,
 }: AccountLayoutProps) {
-  const unreadCount = notifications.filter((notification) => !notification.read).length;
-  const labels = {
+  const unreadCount = useMemo(
+    () => notifications.reduce((count, notification) => count + (notification.read ? 0 : 1), 0),
+    [notifications],
+  );
+  const labels = useMemo(() => ({
     ua: {
       account: 'Особистий кабінет',
       dashboard: 'Панель керування',
@@ -65,9 +69,9 @@ export default function AccountLayout({
       settings: 'Settings',
       admin: 'Admin panel',
     },
-  }[lang];
+  }[lang]), [lang]);
 
-  const items = [
+  const items = useMemo(() => [
     { route: 'dashboard' as RoutePath, label: labels.dashboard, icon: LayoutDashboard },
     { route: 'transactions' as RoutePath, label: labels.transactions, icon: CreditCard },
     { route: 'create-deal' as RoutePath, label: labels.createDeal, icon: PlusCircle },
@@ -75,10 +79,10 @@ export default function AccountLayout({
     { route: 'notifications' as RoutePath, label: labels.notifications, icon: Bell, badge: unreadCount },
     { route: 'profile' as RoutePath, label: labels.profile, icon: User },
     { route: 'settings' as RoutePath, label: labels.settings, icon: Settings },
-    ...(user.role === 'admin'
+    ...(isSupabaseConfigured && user.role === 'admin'
       ? [{ route: 'admin' as RoutePath, label: labels.admin, icon: ShieldAlert }]
       : []),
-  ];
+  ], [labels, unreadCount, user.role]);
   const statusLabels = {
     ua: {
       'Not Started': 'Не розпочато',
@@ -106,11 +110,12 @@ export default function AccountLayout({
       theme === 'dark' ? 'bg-[#050505] text-white' : 'bg-stone-50 text-stone-950'
     }`}>
       <div className="mx-auto w-full max-w-[1600px] px-4 py-5 sm:px-7 sm:py-7 lg:px-10">
-        <header className={`rounded-[1.75rem] border p-5 shadow-sm sm:p-6 ${
+        <header className={`relative overflow-hidden rounded-[2rem] border p-5 shadow-[0_18px_60px_-36px_rgba(16,185,129,0.45)] sm:p-6 ${
           theme === 'dark'
-            ? 'border-stone-800 bg-[#0d0d0d]'
-            : 'border-stone-200 bg-white'
+            ? 'border-white/10 bg-[#0d0d0d]/95'
+            : 'border-stone-200/80 bg-white/95'
         }`}>
+          <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent" />
           <div className="flex items-center justify-between gap-4">
             <div className="min-w-0">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-500">{labels.account}</p>
@@ -126,7 +131,14 @@ export default function AccountLayout({
             </div>
           </div>
 
-          <nav className="no-scrollbar mt-5 flex gap-2 overflow-x-auto border-t border-stone-500/10 pt-4" aria-label={labels.account}>
+          <nav
+            className={`no-scrollbar mt-5 flex min-h-[62px] gap-2 overflow-x-auto rounded-2xl border p-2 ${
+              theme === 'dark'
+                ? 'border-white/[0.07] bg-black/25 shadow-inner'
+                : 'border-stone-200/80 bg-stone-50/80 shadow-inner shadow-stone-200/40'
+            }`}
+            aria-label={labels.account}
+          >
             {items.map(({ route, label, icon: Icon, badge }) => {
               const active = currentRoute === route || (route === 'settings' && currentRoute === 'security');
               return (
@@ -134,19 +146,28 @@ export default function AccountLayout({
                   key={route}
                   type="button"
                   onClick={() => setRoute(route)}
-                  className={`flex shrink-0 items-center gap-2 rounded-xl border px-4 py-3 text-sm font-bold transition ${
+                  aria-current={active ? 'page' : undefined}
+                  className={`group flex min-h-[44px] shrink-0 items-center gap-2 rounded-full border px-4 py-2.5 text-sm font-bold transition-all duration-200 ${
                     active
-                      ? 'border-emerald-500 bg-emerald-500 text-white shadow-sm'
+                      ? theme === 'dark'
+                        ? 'border-emerald-400/30 bg-emerald-400/12 text-emerald-200 shadow-[0_8px_24px_-14px_rgba(52,211,153,0.9)]'
+                        : 'border-emerald-500/20 bg-emerald-50 text-emerald-800 shadow-[0_8px_24px_-16px_rgba(5,150,105,0.65)]'
                       : theme === 'dark'
-                        ? 'border-stone-800 bg-stone-900/70 text-stone-300 hover:border-stone-700 hover:text-white'
-                        : 'border-stone-200 bg-stone-50 text-stone-700 hover:border-stone-300 hover:bg-white'
+                        ? 'border-white/[0.07] bg-white/[0.035] text-stone-400 hover:-translate-y-0.5 hover:border-white/15 hover:bg-white/[0.07] hover:text-white'
+                        : 'border-stone-200/80 bg-white/80 text-stone-600 hover:-translate-y-0.5 hover:border-stone-300 hover:bg-white hover:text-stone-950 hover:shadow-sm'
                   }`}
                 >
-                  <Icon className="h-4 w-4" />
+                  <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
+                    active
+                      ? 'bg-emerald-500/15'
+                      : theme === 'dark' ? 'bg-white/[0.05]' : 'bg-stone-100'
+                  }`}>
+                    <Icon className="h-3.5 w-3.5" />
+                  </span>
                   <span>{label}</span>
                   {!!badge && (
                     <span className={`rounded-full px-2 py-0.5 text-[10px] ${
-                      active ? 'bg-white/20 text-white' : 'bg-rose-500 text-white'
+                      active ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500 text-white'
                     }`}>
                       {badge}
                     </span>

@@ -6,7 +6,7 @@
 import React from 'react';
 import { RoutePath, Language, AppTheme } from '../types';
 import { i18nDict } from '../messages';
-import { Shield, Mail, Phone, MapPin, Twitter, Linkedin, Facebook } from 'lucide-react';
+import { Shield, Mail } from 'lucide-react';
 
 interface FooterProps {
   currentRoute: RoutePath;
@@ -65,38 +65,17 @@ export default function Footer({ currentRoute, setRoute, lang, theme }: FooterPr
             <p className="text-sm leading-relaxed max-w-sm">
               {t.footer.tagline}
             </p>
-            <div className="flex space-x-4">
-              <a
-                href="#"
-                className={`p-2.5 rounded-full border transition-colors ${
-                  theme === 'dark'
-                    ? 'border-stone-850 hover:bg-white hover:text-black hover:border-white text-stone-400'
-                    : 'border-stone-250 hover:bg-black hover:text-white hover:border-black text-stone-600'
-                }`}
-              >
-                <Twitter className="h-4 w-4" />
-              </a>
-              <a
-                href="#"
-                className={`p-2.5 rounded-full border transition-colors ${
-                  theme === 'dark'
-                    ? 'border-stone-850 hover:bg-white hover:text-black hover:border-white text-stone-400'
-                    : 'border-stone-250 hover:bg-black hover:text-white hover:border-black text-stone-600'
-                }`}
-              >
-                <Linkedin className="h-4 w-4" />
-              </a>
-              <a
-                href="#"
-                className={`p-2.5 rounded-full border transition-colors ${
-                  theme === 'dark'
-                    ? 'border-stone-850 hover:bg-white hover:text-black hover:border-white text-stone-400'
-                    : 'border-stone-250 hover:bg-black hover:text-white hover:border-black text-stone-600'
-                }`}
-              >
-                <Facebook className="h-4 w-4" />
-              </a>
-            </div>
+            <a
+              href="mailto:kredo.support.ua@gmail.com"
+              className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-xs font-semibold transition-colors ${
+                theme === 'dark'
+                  ? 'border-stone-800 bg-stone-900/60 text-stone-300 hover:border-stone-700 hover:text-white'
+                  : 'border-stone-200 bg-white text-stone-700 hover:border-stone-300 hover:text-stone-950'
+              }`}
+            >
+              <Mail className="h-3.5 w-3.5" />
+              <span>kredo.support.ua@gmail.com</span>
+            </a>
           </div>
 
           {/* Sitemaps */}

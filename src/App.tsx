@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
 import { RoutePath, Language, AppTheme, UserProfile, EscrowDeal, SystemNotification, DealStatus } from './types';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
@@ -17,7 +17,6 @@ import CTABanner from './components/CTABanner';
 import LoginRegister from './components/LoginRegister';
 import DashboardSettings from './components/Dashboard';
 import CreateDealForm from './components/CreateDealForm';
-import Transactions from './components/Transactions';
 import UserProfileSettings from './components/UserProfile';
 import SettingsView from './components/SettingsView';
 import NotificationsView from './components/NotificationsView';
@@ -25,16 +24,19 @@ import CommissionCalculator from './components/CommissionCalculator';
 import ContactPage from './components/ContactPage';
 import AccountLayout from './components/AccountLayout';
 import SecurityView from './components/SecurityView';
+import ResetPasswordPage from './components/ResetPasswordPage';
 import AboutPage from './components/AboutPage';
 import HowItWorksPage from './components/HowItWorksPage';
 import BusinessInfoPage from './components/BusinessInfoPage';
 import CookieConsent from './components/CookieConsent';
-import VerificationKYC from './components/VerificationKYC';
 import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import DisputesPage from './components/DisputesPage';
-import AdminPanel from './components/AdminPanel';
-import { KredoAuth, KredoData, isSupabaseConfigured } from './supabase';
+import { KredoAuth, KredoData, isSupabaseConfigured, supabase } from './supabase';
+
+const Transactions = lazy(() => import('./components/Transactions'));
+const VerificationKYC = lazy(() => import('./components/VerificationKYC'));
+const AdminPanel = lazy(() => import('./components/AdminPanel'));
 
 // Initial preloaded mock deals for beautiful simulation
 const INITIAL_DEALS: EscrowDeal[] = [];
@@ -55,6 +57,7 @@ export default function App() {
   // 4. Auth client state
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [authReady, setAuthReady] = useState(false);
 
   // 5. Escrows & notific arrays
   const [deals, setDeals] = useState<EscrowDeal[]>(INITIAL_DEALS);
@@ -62,9 +65,15 @@ export default function App() {
 
   // 6. Selected deal trace state on transitions
   const [selectedDealId, setSelectedDealId] = useState<string>('');
+  const routeInitializationStarted = useRef(false);
+  const sessionRestoreStarted = useRef(false);
+  const notificationsLoadedFor = useRef<string | null>(null);
 
   // Auto path checking URL routing for `/ua`, `/en`, `/ru` prefixes
   useEffect(() => {
+    if (routeInitializationStarted.current) return;
+    routeInitializationStarted.current = true;
+
     const checkPathForLangAndRoute = () => {
       const pathname = window.location.pathname;
       const parts = pathname.split('/').filter(Boolean);
@@ -90,7 +99,7 @@ export default function App() {
       if (parts[1]) {
         const routeCand = parts[1].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact',
+          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -100,7 +109,7 @@ export default function App() {
       } else if (parts[0] && parts[0] !== 'en' && parts[0] !== 'ua' && parts[0] !== 'ru') {
         const routeCand = parts[0].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact',
+          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -156,7 +165,7 @@ export default function App() {
       if (parts[1]) {
         const routeCand = parts[1].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact',
+          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -175,27 +184,10 @@ export default function App() {
   // Always reset scroll to the top of the window instantly on route change (navigation)
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
-    
-    // Multi-sequence deferred snap to top to counter any entry/exit animations and frame heights changing
-    const t1 = setTimeout(() => {
+    const frame = window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
-    }, 40);
-    const t2 = setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
-    }, 100);
-    const t3 = setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
-    }, 200);
-    const t4 = setTimeout(() => {
-      window.scrollTo({ top: 0, left: 0, behavior: 'instant' as any });
-    }, 400);
-
-    return () => {
-      clearTimeout(t1);
-      clearTimeout(t2);
-      clearTimeout(t3);
-      clearTimeout(t4);
-    };
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [currentRoute]);
 
   const setLanguageByPrefix = useCallback((newLang: string) => {
@@ -203,17 +195,21 @@ export default function App() {
     setLang(newLang as Language);
   }, []);
 
-  // Retrive from localStorage on initial run
+  // Restore local UI state and authentication once on initial mount.
   useEffect(() => {
+    if (sessionRestoreStarted.current) return;
+    sessionRestoreStarted.current = true;
+
     const storedDeals = localStorage.getItem('safedeal_deals');
     const storedNotifications = localStorage.getItem('safedeal_notifs');
     const storedTheme = localStorage.getItem('safedeal_theme') as AppTheme;
 
-    if (storedDeals) {
-      setDeals(JSON.parse(storedDeals));
-    }
-    if (storedNotifications) {
-      setNotifications(JSON.parse(storedNotifications));
+    try {
+      if (storedDeals) setDeals(JSON.parse(storedDeals));
+      if (storedNotifications) setNotifications(JSON.parse(storedNotifications));
+    } catch {
+      localStorage.removeItem('safedeal_deals');
+      localStorage.removeItem('safedeal_notifs');
     }
     if (storedTheme) {
       setTheme(storedTheme);
@@ -222,21 +218,48 @@ export default function App() {
       setTheme('light');
     }
 
-    KredoAuth.restoreSession().then(({user, expired}) => {
-       if (user) {
-         setUser(user);
+    KredoAuth.restoreSession()
+      .then(({user: restoredUser, expired, mfaRequired}) => {
+       if (restoredUser) {
+         setUser(restoredUser);
          setIsLoggedIn(true);
+       } else if (mfaRequired) {
+          setIsLoggedIn(false);
+          setUser(null);
+          setRoute('login');
        } else if (expired) {
           setIsLoggedIn(false);
           setUser(null);
-          alert(lang === 'ua' ? 'Сесія закінчилась. Увійдіть повторно.' : lang === 'ru' ? 'Сессия закончилась. Войдите снова.' : 'Session expired. Please log in again.');
+          const routeLanguage = window.location.pathname.split('/').filter(Boolean)[0];
+          alert(routeLanguage === 'ru'
+            ? 'Сессия закончилась. Войдите снова.'
+            : routeLanguage === 'en'
+              ? 'Session expired. Please log in again.'
+              : 'Сесія закінчилась. Увійдіть повторно.');
        }
-    });
-
-  }, [lang]);
+      })
+      .finally(() => setAuthReady(true));
+  }, []);
 
   useEffect(() => {
-    if (currentRoute === 'admin' && isLoggedIn && user && user.role !== 'admin') {
+    if (!supabase) return;
+    const { data: listener } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsLoggedIn(false);
+        setUser(null);
+        setRoute('reset-password');
+      }
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (
+      currentRoute === 'admin'
+      && isLoggedIn
+      && user
+      && (!isSupabaseConfigured || user.role !== 'admin')
+    ) {
       setRoute('dashboard');
     }
   }, [currentRoute, isLoggedIn, user]);
@@ -251,9 +274,18 @@ export default function App() {
   }, [notifications]);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || !user) return;
+    if (!isSupabaseConfigured || !user) {
+      notificationsLoadedFor.current = null;
+      return;
+    }
+    if (notificationsLoadedFor.current === user.id) return;
+    notificationsLoadedFor.current = user.id;
+
     KredoData.listUserNotifications(user.id).then((result) => {
-      if (!result.success) return;
+      if (!result.success) {
+        notificationsLoadedFor.current = null;
+        return;
+      }
       const mapped: SystemNotification[] = result.notifications.map((item: any) => {
         const rejected = item.title?.toLowerCase().includes('rejected');
         return {
@@ -298,6 +330,7 @@ export default function App() {
   };
 
   const logout = () => {
+    void KredoAuth.signOut();
     setUser(null);
     setIsLoggedIn(false);
     localStorage.removeItem('safedeal_user');
@@ -305,8 +338,7 @@ export default function App() {
   };
 
   const addNewDeal = (deal: EscrowDeal) => {
-    const updated = [deal, ...deals];
-    setDeals(updated);
+    setDeals((currentDeals) => [deal, ...currentDeals]);
 
     // Create a matching notification log
     const newNotif: SystemNotification = {
@@ -326,11 +358,11 @@ export default function App() {
       type: 'info',
     };
 
-    setNotifications([newNotif, ...notifications]);
+    setNotifications((currentNotifications) => [newNotif, ...currentNotifications]);
   };
 
   const updateDealStatus = (dealId: string, status: DealStatus, systemMsg?: string) => {
-    const updatedDeals = deals.map(deal => {
+    setDeals((currentDeals) => currentDeals.map(deal => {
       if (deal.id === dealId) {
         let messages = [...deal.messages];
         if (systemMsg) {
@@ -348,9 +380,7 @@ export default function App() {
         };
       }
       return deal;
-    });
-
-    setDeals(updatedDeals);
+    }));
 
     // Create a matching system notification log
     const match = deals.find(d => d.id === dealId);
@@ -389,12 +419,12 @@ export default function App() {
         type: status === 'disputed' ? 'warning' : status === 'released' ? 'success' : 'info',
       };
 
-      setNotifications([newNotif, ...notifications]);
+      setNotifications((currentNotifications) => [newNotif, ...currentNotifications]);
     }
   };
 
   const sendDealMessage = (dealId: string, text: string, sender: 'user' | 'partner' | 'system') => {
-    const updated = deals.map(deal => {
+    setDeals((currentDeals) => currentDeals.map(deal => {
       if (deal.id === dealId) {
         return {
           ...deal,
@@ -410,9 +440,7 @@ export default function App() {
         };
       }
       return deal;
-    });
-
-    setDeals(updated);
+    }));
   };
 
   const updateProfile = (profileData: Partial<UserProfile>) => {
@@ -432,15 +460,17 @@ export default function App() {
   };
 
   const markAllRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })));
+    setNotifications((currentNotifications) => currentNotifications.map(n => ({ ...n, read: true })));
   };
 
   const markAsRead = (id: string) => {
-    setNotifications(notifications.map(n => n.id === id ? { ...n, read: true } : n));
+    setNotifications((currentNotifications) => currentNotifications.map(
+      n => n.id === id ? { ...n, read: true } : n,
+    ));
   };
 
   const deleteNotification = (id: string) => {
-    setNotifications(notifications.filter(n => n.id !== id));
+    setNotifications((currentNotifications) => currentNotifications.filter(n => n.id !== id));
   };
 
   // Main UI routing layouts blocks
@@ -570,6 +600,8 @@ export default function App() {
         return (
           <ContactPage lang={lang} theme={theme} />
         );
+      case 'reset-password':
+        return <ResetPasswordPage lang={lang} theme={theme} setRoute={setRoute} />;
       case 'login':
       case 'register':
         return (
@@ -617,6 +649,7 @@ export default function App() {
             sendDealMessage={sendDealMessage}
             selectedDealId={selectedDealId}
             setSelectedDealId={setSelectedDealId}
+            setRoute={setRoute}
           />
         ) : (
           <LoginRegister setRoute={setRoute} lang={lang} theme={theme} loginUser={loginUser} isLoggedIn={isLoggedIn} />
@@ -648,7 +681,7 @@ export default function App() {
         );
       case 'admin':
         return isLoggedIn && user ? (
-          user.role === 'admin' ? (
+          isSupabaseConfigured && user.role === 'admin' ? (
             <AdminPanel
               user={user}
               lang={lang}
@@ -718,6 +751,42 @@ export default function App() {
     'admin'
   ].includes(currentRoute);
 
+  const protectedRoutes: RoutePath[] = [
+    'dashboard',
+    'transactions',
+    'create-deal',
+    'verification',
+    'notifications',
+    'profile',
+    'security',
+    'settings',
+    'admin',
+  ];
+  const pageLoadingText = lang === 'ua'
+    ? 'Завантаження кабінету...'
+    : lang === 'ru'
+      ? 'Загрузка кабинета...'
+      : 'Loading account...';
+  const pageFallback = (
+    <div className="flex min-h-[320px] items-center justify-center">
+      <div className={`rounded-2xl border px-5 py-3 text-sm font-semibold shadow-sm ${
+        theme === 'dark'
+          ? 'border-stone-800 bg-stone-900 text-stone-300'
+          : 'border-stone-200 bg-white text-stone-600'
+      }`}>
+        {pageLoadingText}
+      </div>
+    </div>
+  );
+
+  if (routingReady && protectedRoutes.includes(currentRoute) && !authReady) {
+    return (
+      <div className={`min-h-screen pt-24 ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'}`}>
+        {pageFallback}
+      </div>
+    );
+  }
+
   if (isDashboardRoute && user) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'} transition-all duration-300 font-sans`}>
@@ -740,7 +809,9 @@ export default function App() {
             theme={theme}
             lang={lang}
         >
-          {renderPageContent()}
+          <Suspense fallback={pageFallback}>
+            {renderPageContent()}
+          </Suspense>
         </AccountLayout>
         <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />
       </div>
@@ -761,7 +832,9 @@ export default function App() {
         setLanguageByPrefix={setLanguageByPrefix}
       />
       <main id="app-main-view">
-        {renderPageContent()}
+        <Suspense fallback={pageFallback}>
+          {renderPageContent()}
+        </Suspense>
       </main>
       <Footer currentRoute={currentRoute} setRoute={setRoute} lang={lang} theme={theme} />
       <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />

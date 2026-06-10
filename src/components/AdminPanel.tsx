@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { RoutePath, Language, AppTheme, UserProfile, EscrowDeal, SystemNotification } from '../types';
 import { 
   ShieldAlert, ShieldCheck, Eye, Check, X, Users, CreditCard, Mail, 
@@ -608,37 +608,48 @@ export default function AdminPanel({
   };
 
   // Counting totals for cards display
-  const totalVerifiedSaves = usersDb.filter(u => u.verified).length;
-  const pendingRequestsTotal = kycRequests.filter(r => r.status === 'Pending Review').length;
-  const openContactsTotal = contactRequests.filter(c => c.status === 'pending').length;
-  const activeEscrowDealsVolume = transactions
-    .filter(t => t.status === 'funded')
-    .reduce((acc, t) => acc + (t.amount || 0), 0);
+  const {
+    totalVerifiedSaves,
+    pendingRequestsTotal,
+    openContactsTotal,
+    activeEscrowDealsVolume,
+  } = useMemo(() => ({
+    totalVerifiedSaves: usersDb.filter(u => u.verified).length,
+    pendingRequestsTotal: kycRequests.filter(r => r.status === 'Pending Review').length,
+    openContactsTotal: contactRequests.filter(c => c.status === 'pending').length,
+    activeEscrowDealsVolume: transactions
+      .filter(t => t.status === 'funded')
+      .reduce((acc, t) => acc + (t.amount || 0), 0),
+  }), [contactRequests, kycRequests, transactions, usersDb]);
 
   // Filters logic for KYC Requests
-  const filteredKyc = kycRequests.filter(r => {
-    const matchesSearch = r.full_name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          r.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          r.document_number?.toLowerCase().includes(searchQuery.toLowerCase());
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filteredKyc = useMemo(() => kycRequests.filter(r => {
+    const matchesSearch = !normalizedSearch
+      || r.full_name?.toLowerCase().includes(normalizedSearch)
+      || r.email?.toLowerCase().includes(normalizedSearch)
+      || r.document_number?.toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'ALL' || r.status === statusFilter;
     return matchesSearch && matchesStatus;
-  });
+  }), [kycRequests, normalizedSearch, statusFilter]);
 
   // Filters logic for Users Database
-  const filteredUsers = usersDb.filter(u => {
-    return u.fullName?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           u.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-           u.phone?.toLowerCase().includes(searchQuery.toLowerCase());
-  });
+  const filteredUsers = useMemo(() => usersDb.filter(u => (
+    !normalizedSearch
+    || u.fullName?.toLowerCase().includes(normalizedSearch)
+    || u.email?.toLowerCase().includes(normalizedSearch)
+    || u.phone?.toLowerCase().includes(normalizedSearch)
+  )), [normalizedSearch, usersDb]);
 
   // Filters for Contact Requests
-  const filteredContacts = contactRequests.filter(c => {
-    const matchesQuery = c.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         c.email?.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                         c.message?.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredContacts = useMemo(() => contactRequests.filter(c => {
+    const matchesQuery = !normalizedSearch
+      || c.name?.toLowerCase().includes(normalizedSearch)
+      || c.email?.toLowerCase().includes(normalizedSearch)
+      || c.message?.toLowerCase().includes(normalizedSearch);
     const matchesStatus = statusFilter === 'ALL' || (statusFilter === 'PENDING' ? c.status === 'pending' : c.status === 'resolved');
     return matchesQuery && matchesStatus;
-  });
+  }), [contactRequests, normalizedSearch, statusFilter]);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto py-4 animate-fade-in pb-16">

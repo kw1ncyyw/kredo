@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme, UserProfile } from '../types';
 import { i18nDict } from '../messages';
-import { ShieldCheck, FileText, Camera, Upload, CheckCircle2, ChevronRight, AlertCircle } from 'lucide-react';
+import { ShieldCheck, FileText, Camera, Upload, CheckCircle2, ChevronRight, AlertCircle, Mail, UserRound, BadgeCheck, CalendarDays, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface UserProfileProps {
@@ -50,6 +50,14 @@ export default function UserProfileSettings({
       complianceDesc: 'Акаунт верифіковано. Ліміти на фінансові угоди повністю знято.',
       companyPlaceholder: 'ФОП / Назва Вашої компанії',
       updatedSuccess: 'Профіль успішно оновлено!',
+      personalInfo: 'Особиста інформація',
+      accountEmail: 'Email акаунта',
+      verificationStatus: 'Статус верифікації',
+      accountRole: 'Роль акаунта',
+      createdDate: 'Дата створення',
+      editDetails: 'Редагувати дані',
+      userRole: 'Користувач',
+      adminRole: 'Адміністратор',
     },
     en: {
       subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -72,6 +80,14 @@ export default function UserProfileSettings({
       complianceDesc: 'Account fully verified compliance. High-volume escrow operations unlocked.',
       companyPlaceholder: 'Self-employed / Company Legal Name',
       updatedSuccess: 'Profile updated successfully!',
+      personalInfo: 'Personal information',
+      accountEmail: 'Account email',
+      verificationStatus: 'Verification status',
+      accountRole: 'Account role',
+      createdDate: 'Created date',
+      editDetails: 'Edit details',
+      userRole: 'User',
+      adminRole: 'Administrator',
     },
     ru: {
       subtitle: 'Обновляйте ваши реквизиты для корректного формирования эскроу-соглашений и квитанций.',
@@ -94,6 +110,14 @@ export default function UserProfileSettings({
       complianceDesc: 'Аккаунт верифицирован. Лимиты на финансовые сделки полностью сняты.',
       companyPlaceholder: 'ИП / Юридическое название компании',
       updatedSuccess: 'Профиль успешно обновлен!',
+      personalInfo: 'Личная информация',
+      accountEmail: 'Email аккаунта',
+      verificationStatus: 'Статус верификации',
+      accountRole: 'Роль аккаунта',
+      createdDate: 'Дата создания',
+      editDetails: 'Редактировать данные',
+      userRole: 'Пользователь',
+      adminRole: 'Администратор',
     }
   }[lang] || {
     subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -116,6 +140,14 @@ export default function UserProfileSettings({
     complianceDesc: 'Account fully verified compliance. High-volume escrow operations unlocked.',
     companyPlaceholder: 'Self-employed / Company Legal Name',
     updatedSuccess: 'Profile updated successfully!',
+    personalInfo: 'Personal information',
+    accountEmail: 'Account email',
+    verificationStatus: 'Verification status',
+    accountRole: 'Account role',
+    createdDate: 'Created date',
+    editDetails: 'Edit details',
+    userRole: 'User',
+    adminRole: 'Administrator',
   };
 
   // Form states
@@ -129,6 +161,7 @@ export default function UserProfileSettings({
   const [kycStep, setKycStep] = useState(1); // 1: choose, 2: scan, 3: completed
   const [docType, setDocType] = useState('passport');
   const [doneSuccess, setDoneSuccess] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,6 +172,7 @@ export default function UserProfileSettings({
       country,
     });
     setDoneSuccess(true);
+    setEditing(false);
     setTimeout(() => setDoneSuccess(false), 2000);
   };
 
@@ -162,29 +196,51 @@ export default function UserProfileSettings({
 
   return (
     <div className="w-full py-4">
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         
-        <div className="mb-8 border-b pb-6 border-stone-200 dark:border-stone-800">
+        <div className={`mb-8 flex flex-col gap-5 rounded-[2rem] border p-6 sm:flex-row sm:items-center sm:justify-between sm:p-8 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+        }`}>
           <div>
             <h1 className={`text-xl sm:text-2xl font-extrabold tracking-tight ${
               theme === 'dark' ? 'text-white' : 'text-stone-900'
             }`}>
               {t.profile.title}
             </h1>
-            <p className="text-xs mt-1 text-stone-500">
+            <p className="text-sm mt-2 text-stone-500">
               {kycLoc.subtitle}
             </p>
           </div>
-          
+          <button type="button" onClick={() => setEditing((value) => !value)} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-emerald-500 px-4 text-sm font-bold text-white hover:bg-emerald-600">
+            <Pencil className="h-4 w-4" />{kycLoc.editDetails}
+          </button>
+        </div>
+
+        <div className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {[
+            { label: kycLoc.accountEmail, value: user.email, icon: Mail },
+            { label: kycLoc.verificationStatus, value: user.verified ? kycLoc.verifiedPartner : kycLoc.actionReq, icon: BadgeCheck },
+            { label: kycLoc.accountRole, value: user.role === 'admin' ? kycLoc.adminRole : kycLoc.userRole, icon: UserRound },
+            { label: kycLoc.createdDate, value: user.joinedAt, icon: CalendarDays },
+          ].map(({ label, value, icon: Icon }) => (
+            <article key={label} className={`rounded-3xl border p-5 ${
+              theme === 'dark' ? 'border-white/[0.08] bg-[#0d0d0d]' : 'border-stone-200 bg-white shadow-sm'
+            }`}>
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500"><Icon className="h-5 w-5" /></span>
+              <p className="mt-4 text-sm font-semibold text-stone-500">{label}</p>
+              <p className="mt-1 break-words text-base font-black">{value || '—'}</p>
+            </article>
+          ))}
         </div>
 
         {/* Form Container */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
           {/* Inputs Section */}
-          <form onSubmit={handleSave} className={`lg:col-span-3 rounded-3xl p-8 sm:p-12 border space-y-6 ${
-            theme === 'dark' ? 'bg-[#080808]/90 border-stone-900 shadow-md' : 'bg-white border-stone-200 shadow-sm'
+          <form onSubmit={handleSave} className={`lg:col-span-3 rounded-[2rem] p-6 sm:p-8 border space-y-6 ${
+            theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
           }`}>
+            <div><h2 className="text-xl font-black">{kycLoc.personalInfo}</h2><p className="mt-1 text-sm text-stone-500">{kycLoc.subtitle}</p></div>
             
             {doneSuccess && (
               <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-xs font-semibold flex items-center space-x-2">
@@ -200,6 +256,7 @@ export default function UserProfileSettings({
               <input
                 type="text"
                 required
+                disabled={!editing}
                 id="profile-fullname"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
@@ -218,6 +275,7 @@ export default function UserProfileSettings({
               <input
                 type="text"
                 required
+                disabled={!editing}
                 id="profile-phone"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
@@ -236,6 +294,7 @@ export default function UserProfileSettings({
               <input
                 type="text"
                 id="profile-company"
+                disabled={!editing}
                 value={companyName}
                 onChange={(e) => setCompanyName(e.target.value)}
                 placeholder={kycLoc.companyPlaceholder}
@@ -254,6 +313,7 @@ export default function UserProfileSettings({
               <input
                 type="text"
                 required
+                disabled={!editing}
                 id="profile-country"
                 value={country}
                 onChange={(e) => setCountry(e.target.value)}
@@ -265,17 +325,17 @@ export default function UserProfileSettings({
               />
             </div>
 
-            <button
+            {editing && <button
               id="profile-save-btn"
               type="submit"
-              className={`w-full py-3.5 mt-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all shadow-md hover:scale-[1.01] ${
+              className={`w-full py-4 mt-2 rounded-xl text-sm font-bold transition-all shadow-md hover:-translate-y-0.5 ${
                 theme === 'dark'
                   ? 'bg-white text-black hover:bg-stone-200'
                   : 'bg-black text-white hover:bg-stone-900'
               }`}
             >
               {t.profile.saveBtn}
-            </button>
+            </button>}
           </form>
 
           {/* KYC Simple Box */}
@@ -284,8 +344,8 @@ export default function UserProfileSettings({
               {kycLoc.identVerify}
             </h3>
 
-            <div className={`rounded-2xl p-6 border text-center ${
-              theme === 'dark' ? 'bg-[#080808] border-stone-900' : 'bg-white border-stone-200 shadow-sm'
+            <div className={`rounded-[2rem] p-6 border text-center ${
+              theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
             }`}>
               {user.verified ? (
                 <div className="space-y-4">

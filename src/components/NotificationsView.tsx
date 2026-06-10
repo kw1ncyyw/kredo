@@ -6,8 +6,7 @@
 import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme, SystemNotification } from '../types';
 import { i18nDict } from '../messages';
-import { ShieldCheck, Calendar, Bell, Sliders, Trash2, CheckSquare } from 'lucide-react';
-import { motion } from 'motion/react';
+import { Calendar, Bell, Trash2, CheckSquare, ArrowUpRight, Inbox } from 'lucide-react';
 
 interface NotificationsViewProps {
   notifications: SystemNotification[];
@@ -37,18 +36,49 @@ export default function NotificationsView({
   };
 
   const selectedNotif = notifications.find(n => n.id === selectedNotifId);
+  const copy = {
+    ua: {
+      emptyTitle: 'Сповіщень поки немає',
+      emptyText: 'Тут з’являтимуться оновлення щодо ваших угод, верифікації та звернень.',
+      open: 'Відкрити деталі',
+      read: 'Прочитано',
+      unread: 'Нове',
+      type: 'Тип',
+      types: { info: 'Інформація', success: 'Успіх', warning: 'Увага', alert: 'Важливо' },
+    },
+    ru: {
+      emptyTitle: 'Уведомлений пока нет',
+      emptyText: 'Здесь будут появляться обновления по вашим сделкам, верификации и обращениям.',
+      open: 'Открыть детали',
+      read: 'Прочитано',
+      unread: 'Новое',
+      type: 'Тип',
+      types: { info: 'Информация', success: 'Успех', warning: 'Внимание', alert: 'Важно' },
+    },
+    en: {
+      emptyTitle: 'No notifications yet',
+      emptyText: 'Updates about your deals, verification, and support requests will appear here.',
+      open: 'Open details',
+      read: 'Read',
+      unread: 'New',
+      type: 'Type',
+      types: { info: 'Information', success: 'Success', warning: 'Warning', alert: 'Important' },
+    },
+  }[lang];
 
   return (
     <div className={theme === 'dark' ? 'text-stone-100' : 'text-stone-900'}>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         
         {/* Header Title */}
-        <div className="mb-10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6 border-b border-stone-500/10">
+        <div className={`mb-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-5 rounded-[2rem] border p-6 sm:p-8 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+        }`}>
           <div>
             <h1 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-stone-950'}`}>
               {t.notif.notifTitle}
             </h1>
-            <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-stone-500' : 'text-stone-400'}`}>
+            <p className={`text-sm mt-2 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
               {t.notif.notifSubtitle}
             </p>
           </div>
@@ -58,8 +88,8 @@ export default function NotificationsView({
             <button
               id="notifications-mark-read"
               onClick={markAllRead}
-              className={`text-xs font-bold uppercase tracking-wider inline-flex items-center space-x-1 hover:underline ${
-                theme === 'dark' ? 'text-stone-300 hover:text-white' : 'text-stone-701 text-stone-700 hover:text-stone-955'
+              className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-4 text-sm font-bold transition-colors ${
+                theme === 'dark' ? 'border-stone-800 bg-stone-900 text-stone-300 hover:text-white' : 'border-stone-200 bg-stone-50 text-stone-700 hover:bg-white'
               }`}
             >
               <CheckSquare className="h-4 w-4 shrink-0" />
@@ -70,34 +100,38 @@ export default function NotificationsView({
 
         {/* Notifications list catalog */}
         {notifications.length === 0 ? (
-          <div className={`rounded-3xl p-14 border border-dashed text-center ${
-            theme === 'dark' ? 'border-stone-900 bg-stone-950/20' : 'border-stone-200 bg-stone-50/50'
+          <div className={`relative overflow-hidden rounded-[2rem] p-10 sm:p-16 border text-center ${
+            theme === 'dark' ? 'border-white/[0.08] bg-[#0d0d0d]' : 'border-stone-200 bg-white shadow-[0_22px_65px_-45px_rgba(5,150,105,0.4)]'
           }`}>
-            <Bell className="h-10 w-10 text-stone-500 mx-auto mb-4" />
-            <p className={`text-sm ${theme === 'dark' ? 'text-stone-400' : 'text-stone-500'}`}>
-              {lang === 'ua' ? 'Немає нових сповіщень' : lang === 'ru' ? 'Нет новых уведомлений' : 'No new notifications'}
+            <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent" />
+            <span className="mx-auto flex h-20 w-20 items-center justify-center rounded-3xl border border-emerald-500/15 bg-emerald-500/[0.07] text-emerald-500">
+              <Inbox className="h-9 w-9" />
+            </span>
+            <h2 className={`mt-6 text-2xl font-black ${theme === 'dark' ? 'text-white' : 'text-stone-950'}`}>
+              {copy.emptyTitle}
+            </h2>
+            <p className={`mx-auto mt-3 max-w-lg text-sm leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
+              {copy.emptyText}
             </p>
           </div>
         ) : (
           <div className="space-y-3.5">
             {notifications.map((notif) => (
-              <div
+              <article
                 key={notif.id}
                 id={`notif-${notif.id}`}
                 onClick={() => handleOpenNotification(notif)}
-                className={`p-5 rounded-2xl border flex items-start justify-between gap-4 transition-all cursor-pointer hover:scale-[1.01] ${
+                className={`rounded-[1.5rem] border p-5 sm:p-6 transition-all hover:-translate-y-0.5 ${
                   notif.read
                     ? theme === 'dark'
-                      ? 'bg-[#080808]/40 border-stone-900/60 text-stone-401'
-                      : 'bg-white/70 border-stone-200 text-stone-605 shadow-sm'
+                      ? 'bg-[#0d0d0d] border-white/[0.07] text-stone-300'
+                      : 'bg-white border-stone-200 text-stone-700 shadow-sm'
                     : theme === 'dark'
-                    ? 'bg-[#080808]/90 border-white text-white shadow-md'
-                    : 'bg-stone-50 border-black text-stone-905 shadow-sm'
+                    ? 'bg-emerald-500/[0.06] border-emerald-400/20 text-white shadow-md'
+                    : 'bg-emerald-50/60 border-emerald-500/20 text-stone-950 shadow-sm'
                 }`}
               >
-                
-                {/* Indicator Status & text info labels */}
-                <div className="flex items-start space-x-4 min-w-0">
+                <div className="flex items-start gap-4">
                   <div className={`p-2.5 rounded-xl shrink-0 mt-0.5 ${
                     theme === 'dark' ? 'bg-stone-900/80 text-stone-300' : 'bg-stone-100 text-stone-600'
                   }`}>
@@ -112,26 +146,27 @@ export default function NotificationsView({
                         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 shrink-0" />
                       )}
                     </div>
-                    <p className={`text-xs leading-relaxed ${theme === 'dark' ? 'text-stone-400' : 'text-stone-505 text-stone-500'}`}>
+                    <p className={`text-sm leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
                       {notif.description[lang]}
                     </p>
-                    <span className="text-[9px] uppercase font-bold tracking-widest text-stone-500 block flex items-center space-x-1 pt-1.5">
-                      <Calendar className="h-3 w-3" />
-                      <span>{notif.time || (lang === 'ua' ? 'Час не вказано' : lang === 'ru' ? 'Время не указано' : 'Time not specified')}</span>
-                    </span>
+                    <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-semibold text-stone-500">
+                      <span className="inline-flex items-center gap-1.5"><Calendar className="h-3.5 w-3.5" />{notif.time}</span>
+                      <span className="rounded-full border border-stone-500/15 px-2.5 py-1">{copy.type}: {copy.types[notif.type]}</span>
+                      <span className={`rounded-full px-2.5 py-1 ${notif.read ? 'bg-stone-500/10' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                        {notif.read ? copy.read : copy.unread}
+                      </span>
+                    </div>
                   </div>
                 </div>
-
-                {/* Specific trash bin logs */}
-                <button
-                  id={`delete-notif-${notif.id}`}
-                  onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
-                  className="p-2 rounded-lg hover:bg-red-500/10 text-stone-500 hover:text-red-500 transition-colors shrink-0"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-
-              </div>
+                <div className="mt-5 flex items-center justify-between border-t border-stone-500/10 pt-4">
+                  <button onClick={() => handleOpenNotification(notif)} className="inline-flex items-center gap-2 text-sm font-bold text-emerald-500">
+                    {copy.open}<ArrowUpRight className="h-4 w-4" />
+                  </button>
+                  <button id={`delete-notif-${notif.id}`} onClick={() => deleteNotification(notif.id)} className="rounded-lg p-2 text-stone-500 hover:bg-red-500/10 hover:text-red-500">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              </article>
             ))}
           </div>
         )}

@@ -17,6 +17,16 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS first_name TEXT,
+  ADD COLUMN IF NOT EXISTS last_name TEXT,
+  ADD COLUMN IF NOT EXISTS role TEXT DEFAULT 'user',
+  ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS kyc_status TEXT DEFAULT 'Not Started',
+  ADD COLUMN IF NOT EXISTS kyc_notes TEXT,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+
 CREATE OR REPLACE FUNCTION public.is_admin()
 RETURNS BOOLEAN
 LANGUAGE sql
@@ -37,15 +47,17 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF current_user IN ('postgres', 'service_role', 'supabase_admin') THEN
+  IF auth.role() = 'service_role' OR public.is_admin() THEN
     RETURN NEW;
   END IF;
-  IF NOT public.is_admin() THEN
-    IF NEW.role IS DISTINCT FROM OLD.role
-       OR NEW.kyc_status IS DISTINCT FROM OLD.kyc_status
-       OR NEW.kyc_notes IS DISTINCT FROM OLD.kyc_notes THEN
-      RAISE EXCEPTION 'Only administrators can update profile security fields';
-    END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id
+     OR NEW.email IS DISTINCT FROM OLD.email
+     OR NEW.role IS DISTINCT FROM OLD.role
+     OR NEW.email_verified IS DISTINCT FROM OLD.email_verified
+     OR NEW.kyc_status IS DISTINCT FROM OLD.kyc_status
+     OR NEW.kyc_notes IS DISTINCT FROM OLD.kyc_notes
+     OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
+    RAISE EXCEPTION 'Users may update only safe profile fields';
   END IF;
   RETURN NEW;
 END;
@@ -68,7 +80,8 @@ USING (auth.uid() = id);
 DROP POLICY IF EXISTS "Users can update their own profile" ON public.profiles;
 CREATE POLICY "Users can update their own profile" 
 ON public.profiles FOR UPDATE 
-USING (auth.uid() = id);
+USING (auth.uid() = id)
+WITH CHECK (auth.uid() = id);
 
 DROP POLICY IF EXISTS "System/Admins can read all profiles" ON public.profiles;
 CREATE POLICY "System/Admins can read all profiles" 
@@ -120,13 +133,32 @@ CREATE TABLE IF NOT EXISTS public.kyc_requests (
 );
 
 ALTER TABLE public.kyc_requests
-  ADD COLUMN IF NOT EXISTS email TEXT;
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS full_name TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS document_type TEXT,
+  ADD COLUMN IF NOT EXISTS document_number TEXT,
+  ADD COLUMN IF NOT EXISTS document_front_url TEXT,
+  ADD COLUMN IF NOT EXISTS selfie_url TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'Pending Review',
+  ADD COLUMN IF NOT EXISTS admin_notes TEXT DEFAULT '',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
 
-ALTER TABLE public.kyc_requests
-  DROP CONSTRAINT IF EXISTS kyc_requests_status_check;
-ALTER TABLE public.kyc_requests
-  ADD CONSTRAINT kyc_requests_status_check
-  CHECK (status IN ('Not Started', 'Pending Review', 'Verified', 'Rejected'));
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'kyc_requests_status_check'
+      AND conrelid = 'public.kyc_requests'::regclass
+  ) THEN
+    ALTER TABLE public.kyc_requests
+      ADD CONSTRAINT kyc_requests_status_check
+      CHECK (status IN ('Not Started', 'Pending Review', 'Verified', 'Rejected'));
+  END IF;
+END;
+$$;
 
 -- Index on user_id for swift lookups
 CREATE INDEX IF NOT EXISTS idx_kyc_requests_user_id ON public.kyc_requests (user_id);
@@ -202,7 +234,13 @@ CREATE TABLE IF NOT EXISTS public.contact_requests (
 );
 
 ALTER TABLE public.contact_requests
-  ADD COLUMN IF NOT EXISTS destination_email TEXT;
+  ADD COLUMN IF NOT EXISTS name TEXT,
+  ADD COLUMN IF NOT EXISTS email TEXT,
+  ADD COLUMN IF NOT EXISTS topic TEXT,
+  ADD COLUMN IF NOT EXISTS message TEXT,
+  ADD COLUMN IF NOT EXISTS destination_email TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'pending',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
 
 -- Turn on RLS for contact_requests
 ALTER TABLE public.contact_requests ENABLE ROW LEVEL SECURITY;
@@ -210,7 +248,14 @@ ALTER TABLE public.contact_requests ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Anyone can submit contact requests" ON public.contact_requests;
 CREATE POLICY "Anyone can submit contact requests"
 ON public.contact_requests FOR INSERT
-WITH CHECK (true);
+WITH CHECK (
+  status = 'pending'
+  AND destination_email = 'kredo.support.ua@gmail.com'
+  AND char_length(name) BETWEEN 1 AND 100
+  AND char_length(email) BETWEEN 3 AND 254
+  AND char_length(topic) BETWEEN 1 AND 100
+  AND char_length(message) BETWEEN 1 AND 5000
+);
 
 DROP POLICY IF EXISTS "Admins can view and manage all contact requests" ON public.contact_requests;
 CREATE POLICY "Admins can view and manage all contact requests"
@@ -233,6 +278,14 @@ CREATE TABLE IF NOT EXISTS public.notifications (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+ALTER TABLE public.notifications
+  ADD COLUMN IF NOT EXISTS user_id UUID REFERENCES public.profiles(id) ON DELETE CASCADE,
+  ADD COLUMN IF NOT EXISTS title TEXT,
+  ADD COLUMN IF NOT EXISTS message TEXT,
+  ADD COLUMN IF NOT EXISTS type TEXT,
+  ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+
 -- Index on user_id for notifications
 CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON public.notifications (user_id);
 
@@ -247,7 +300,35 @@ USING (auth.uid() = user_id);
 DROP POLICY IF EXISTS "Users can update read status on their own notifications" ON public.notifications;
 CREATE POLICY "Users can update read status on their own notifications"
 ON public.notifications FOR UPDATE
-USING (auth.uid() = user_id);
+USING (auth.uid() = user_id)
+WITH CHECK (auth.uid() = user_id);
+
+CREATE OR REPLACE FUNCTION public.protect_notification_fields()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  IF COALESCE(auth.role(), '') <> 'service_role'
+     AND NOT public.is_admin()
+     AND (
+       NEW.user_id IS DISTINCT FROM OLD.user_id
+       OR NEW.title IS DISTINCT FROM OLD.title
+       OR NEW.message IS DISTINCT FROM OLD.message
+       OR NEW.type IS DISTINCT FROM OLD.type
+       OR NEW.created_at IS DISTINCT FROM OLD.created_at
+     ) THEN
+    RAISE EXCEPTION 'Users may update only notification read status';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS protect_notification_fields ON public.notifications;
+CREATE TRIGGER protect_notification_fields
+BEFORE UPDATE ON public.notifications
+FOR EACH ROW EXECUTE FUNCTION public.protect_notification_fields();
 
 DROP POLICY IF EXISTS "Admins/System can insert notifications" ON public.notifications;
 CREATE POLICY "Admins/System can insert notifications"
@@ -316,3 +397,49 @@ WITH CHECK (
   bucket_id = 'kyc-documents'
   AND (storage.foldername(name))[1] = auth.uid()::text
 );
+
+-- -------------------------------------------------------------
+-- 6. TRANSACTIONS TABLE
+-- -------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.transactions (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    buyer_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
+    seller_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT NOT NULL,
+    title TEXT NOT NULL,
+    amount NUMERIC(18, 2) NOT NULL CHECK (amount > 0),
+    currency TEXT NOT NULL CHECK (currency IN ('USD', 'EUR', 'UAH')),
+    status TEXT NOT NULL DEFAULT 'created'
+      CHECK (status IN ('created', 'funded', 'delivered', 'released', 'disputed', 'cancelled')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    CHECK (buyer_id <> seller_id)
+);
+
+ALTER TABLE public.transactions
+  ADD COLUMN IF NOT EXISTS buyer_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS seller_id UUID REFERENCES public.profiles(id) ON DELETE RESTRICT,
+  ADD COLUMN IF NOT EXISTS title TEXT,
+  ADD COLUMN IF NOT EXISTS amount NUMERIC(18, 2),
+  ADD COLUMN IF NOT EXISTS currency TEXT,
+  ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'created',
+  ADD COLUMN IF NOT EXISTS created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW()),
+  ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW());
+
+CREATE INDEX IF NOT EXISTS idx_transactions_buyer_id ON public.transactions (buyer_id);
+CREATE INDEX IF NOT EXISTS idx_transactions_seller_id ON public.transactions (seller_id);
+
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Participants can view their own transactions" ON public.transactions;
+CREATE POLICY "Participants can view their own transactions"
+ON public.transactions FOR SELECT TO authenticated
+USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
+
+DROP POLICY IF EXISTS "Users can create transactions as a participant" ON public.transactions;
+DROP POLICY IF EXISTS "Participants can update their own transactions" ON public.transactions;
+
+DROP POLICY IF EXISTS "Admins can manage all transactions" ON public.transactions;
+CREATE POLICY "Admins can manage all transactions"
+ON public.transactions FOR ALL TO authenticated
+USING (public.is_admin())
+WITH CHECK (public.is_admin());

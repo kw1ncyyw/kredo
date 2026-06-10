@@ -8,8 +8,8 @@ import { UserProfile, Language } from './types';
 import { i18nDict } from './messages';
 
 // Read environmental variables
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
 // True if user has configured real Supabase secrets
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
@@ -55,7 +55,13 @@ function translateAuthError(errorMsg: string, lang: Language): string {
   if (msg.includes('token has expired') || msg.includes('expired')) {
     return lang === 'ua' ? 'Термін дії коду минув' : lang === 'ru' ? 'Срок действия кода истек' : 'Verification code expired';
   }
-  if (msg.includes('invalid message') || msg.includes('invalid token') || msg.includes('invalid otp')) {
+  if (
+    msg.includes('invalid message')
+    || msg.includes('invalid token')
+    || msg.includes('invalid otp')
+    || msg.includes('invalid totp')
+    || msg.includes('challenge')
+  ) {
     return lang === 'ua' ? 'Неправильний код' : lang === 'ru' ? 'Неверный код' : 'Invalid verification code';
   }
   if (msg.includes('too many requests') || msg.includes('rate limit')) {
@@ -99,6 +105,111 @@ type ProfileRow = {
   last_name?: string | null;
 };
 
+export type KredoMfaFactor = {
+  id: string;
+  friendlyName: string;
+  createdAt: string;
+};
+
+type KredoMfaResult = {
+  success: boolean;
+  error?: string;
+  debugError?: string;
+  sessionExpired?: boolean;
+};
+
+function translateMfaError(errorMessage: string, lang: Language): string {
+  const t = i18nDict[lang]?.security || i18nDict.ua.security;
+  const message = errorMessage.toLowerCase();
+
+  if (
+    message.includes('session')
+    || message.includes('jwt')
+    || message.includes('not authenticated')
+    || message.includes('user not found')
+  ) {
+    return t.sessionExpired;
+  }
+  if (message.includes('factor') && (message.includes('already') || message.includes('exists'))) {
+    return t.mfaFactorExists;
+  }
+  if (message.includes('maximum') || message.includes('too many')) {
+    return t.mfaFactorLimit;
+  }
+  if (
+    message.includes('invalid otp')
+    || message.includes('invalid totp')
+    || message.includes('invalid code')
+    || message.includes('challenge')
+  ) {
+    return t.invalidCode;
+  }
+  return t.mfaUnexpectedError;
+}
+
+async function requireSupabaseSession(lang: Language): Promise<{
+  sessionAvailable: boolean;
+  error?: string;
+  debugError?: string;
+}> {
+  if (!isSupabaseConfigured || !supabase) {
+    return {
+      sessionAvailable: false,
+      error: i18nDict[lang].security.supabaseRequired,
+      debugError: 'Supabase client is not configured.',
+    };
+  }
+
+  const { data, error } = await supabase.auth.getSession();
+  if (error) {
+    console.error('Supabase Auth session check failed:', error);
+    return {
+      sessionAvailable: false,
+      error: translateMfaError(error.message, lang),
+      debugError: error.message,
+    };
+  }
+  if (!data.session) {
+    console.error('Supabase MFA session check failed: no active Auth session.');
+    return {
+      sessionAvailable: false,
+      error: i18nDict[lang].security.sessionExpired,
+      debugError: 'No active Supabase Auth session.',
+    };
+  }
+
+  return { sessionAvailable: true };
+}
+
+async function getMfaRequirement(): Promise<{
+  required: boolean;
+  factorId?: string;
+  error?: string;
+}> {
+  if (!supabase) return { required: false };
+
+  const [{ data: factorsData, error: factorsError }, { data: aalData, error: aalError }] = await Promise.all([
+    supabase.auth.mfa.listFactors(),
+    supabase.auth.mfa.getAuthenticatorAssuranceLevel(),
+  ]);
+
+  if (factorsError || aalError) {
+    console.error('Supabase MFA assurance check failed:', {
+      factorsError,
+      assuranceLevelError: aalError,
+    });
+    return { required: false, error: factorsError?.message || aalError?.message };
+  }
+
+  const verifiedTotp = factorsData.totp.find((factor) => factor.status === 'verified');
+  const required = (
+    !!verifiedTotp
+    && aalData.currentLevel === 'aal1'
+    && aalData.nextLevel === 'aal2'
+  );
+  return { required, factorId: required ? verifiedTotp.id : undefined };
+}
+
 async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfile>): Promise<UserProfile> {
   let profileRow: ProfileRow | null = null;
 
@@ -112,7 +223,7 @@ async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfil
   }
 
   const databaseName = [profileRow?.first_name, profileRow?.last_name].filter(Boolean).join(' ').trim();
-  const emailVerified = profileRow?.email_verified ?? !!authUser.email_confirmed_at;
+  const emailVerified = !!authUser.email_confirmed_at || !!profileRow?.email_verified;
   const kycStatus = profileRow?.kyc_status || fallback?.kyc_status || 'Not Started';
 
   return {
@@ -138,7 +249,7 @@ export const KredoAuth = {
   isConfigured: () => isSupabaseConfigured,
 
   // Restore current session securely
-  restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean }> => {
+  restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean; mfaRequired?: boolean }> => {
     try {
       const sessionData = localStorage.getItem(SESSION_KEY);
       const cachedProfile: UserProfile | null = sessionData ? JSON.parse(sessionData) : null;
@@ -148,6 +259,16 @@ export const KredoAuth = {
         if (error || !data.session) {
           localStorage.removeItem(SESSION_KEY);
           return { user: null, expired: !!cachedProfile };
+        }
+        const mfa = await getMfaRequirement();
+        if (mfa.error) {
+          console.error('Unable to verify MFA assurance level:', mfa.error);
+          localStorage.removeItem(SESSION_KEY);
+          return { user: null, expired: true };
+        }
+        if (mfa.required) {
+          localStorage.removeItem(SESSION_KEY);
+          return { user: null, expired: false, mfaRequired: true };
         }
         const userProfile = await buildSupabaseProfile(data.session.user, cachedProfile || undefined);
         localStorage.setItem(SESSION_KEY, JSON.stringify(userProfile));
@@ -220,7 +341,13 @@ export const KredoAuth = {
   },
 
   // Sign In
-  signIn: async (email: string, password: string, rememberMe = false, lang: Language = 'ua'): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+  signIn: async (email: string, password: string, rememberMe = false, lang: Language = 'ua'): Promise<{
+    success: boolean;
+    error?: string;
+    user?: UserProfile;
+    mfaRequired?: boolean;
+    factorId?: string;
+  }> => {
     const cleanedEmail = email.trim().toLowerCase();
     const t = i18nDict[lang] || i18nDict.ua;
 
@@ -257,6 +384,15 @@ export const KredoAuth = {
           return { success: false, error: translateAuthError(error.message, lang) };
         }
         if (data && data.user) {
+          const mfa = await getMfaRequirement();
+          if (mfa.error) {
+            await supabase.auth.signOut();
+            return { success: false, error: translateAuthError(mfa.error, lang) };
+          }
+          if (mfa.required && mfa.factorId) {
+            localStorage.removeItem(SESSION_KEY);
+            return { success: true, mfaRequired: true, factorId: mfa.factorId };
+          }
           const profile = await buildSupabaseProfile(data.user, { balance: 145000 });
           
           localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
@@ -369,7 +505,9 @@ export const KredoAuth = {
     const t = i18nDict[lang] || i18nDict.ua;
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.auth.resetPasswordForEmail(cleanedEmail);
+      const { error } = await supabase.auth.resetPasswordForEmail(cleanedEmail, {
+        redirectTo: `${window.location.origin}/${lang}/reset-password`,
+      });
       if (error) {
         return { success: false, error: translateAuthError(error.message, lang) };
       }
@@ -390,6 +528,280 @@ export const KredoAuth = {
     return { success: true };
   },
 
+  getPendingMfaFactor: async (): Promise<string | null> => {
+    if (!isSupabaseConfigured || !supabase) return null;
+    const { data, error } = await supabase.auth.getSession();
+    if (error) {
+      console.error('Supabase session check before MFA login failed:', error);
+      return null;
+    }
+    if (!data.session) return null;
+    const result = await getMfaRequirement();
+    if (result.error) {
+      console.error('Unable to inspect MFA requirement:', result.error);
+      return null;
+    }
+    return result.required ? result.factorId || null : null;
+  },
+
+  verifyMfaLogin: async (
+    factorId: string,
+    code: string,
+    lang: Language = 'ua',
+  ): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, error: i18nDict[lang].security.supabaseRequired };
+    }
+
+    try {
+      const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+      if (challengeError) {
+        console.error('Supabase MFA login challenge failed:', challengeError);
+        return { success: false, error: translateAuthError(challengeError.message, lang) };
+      }
+      const { data: verified, error: verifyError } = await supabase.auth.mfa.verify({
+        factorId,
+        challengeId: challenge.id,
+        code,
+      });
+      if (verifyError) {
+        console.error('Supabase MFA login verification failed:', verifyError);
+        return { success: false, error: translateAuthError(verifyError.message, lang) };
+      }
+      const profile = await buildSupabaseProfile(verified.user, { balance: 145000 });
+      localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+      return { success: true, user: profile };
+    } catch (error: any) {
+      console.error('Unexpected Supabase MFA login error:', error);
+      return { success: false, error: translateAuthError(error?.message || 'MFA verification failed', lang) };
+    }
+  },
+
+  changePassword: async (
+    email: string,
+    currentPassword: string,
+    newPassword: string,
+    lang: Language = 'ua',
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, error: i18nDict[lang].security.supabaseRequired };
+    }
+
+    const reauthClient = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    });
+    const { error: reauthError } = await reauthClient.auth.signInWithPassword({
+      email,
+      password: currentPassword,
+    });
+    if (reauthError) {
+      return { success: false, error: i18nDict[lang].security.currentPassMismatch };
+    }
+
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      return { success: false, error: translateAuthError(error.message, lang) };
+    }
+    return { success: true };
+  },
+
+  updateRecoveryPassword: async (
+    newPassword: string,
+    lang: Language = 'ua',
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (!isSupabaseConfigured || !supabase) {
+      return { success: false, error: i18nDict[lang].security.supabaseRequired };
+    }
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      return { success: false, error: i18nDict[lang].security.recoveryLinkInvalid };
+    }
+    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    if (error) {
+      return { success: false, error: translateAuthError(error.message, lang) };
+    }
+    await KredoAuth.signOut();
+    return { success: true };
+  },
+
+  listTotpFactors: async (
+    lang: Language = 'ua',
+  ): Promise<{ factors: KredoMfaFactor[]; error?: string; debugError?: string; sessionExpired?: boolean }> => {
+    const session = await requireSupabaseSession(lang);
+    if (!session.sessionAvailable) {
+      return {
+        factors: [],
+        error: session.error,
+        debugError: session.debugError,
+        sessionExpired: session.error === i18nDict[lang].security.sessionExpired,
+      };
+    }
+    if (!supabase) return { factors: [], error: i18nDict[lang].security.supabaseRequired };
+    const { data, error } = await supabase.auth.mfa.listFactors();
+    if (error) {
+      console.error('Supabase MFA listFactors failed:', error);
+      return {
+        factors: [],
+        error: translateMfaError(error.message, lang),
+        debugError: error.message,
+      };
+    }
+    return {
+      factors: data.totp
+        .filter((factor) => factor.status === 'verified')
+        .map((factor) => ({
+          id: factor.id,
+          friendlyName: factor.friendly_name || 'KREDO Authenticator',
+          createdAt: factor.created_at,
+        })),
+    };
+  },
+
+  enrollTotp: async (lang: Language = 'ua'): Promise<{
+    factorId?: string;
+    qrCode?: string;
+    secret?: string;
+    uri?: string;
+    error?: string;
+    debugError?: string;
+    sessionExpired?: boolean;
+  }> => {
+    const session = await requireSupabaseSession(lang);
+    if (!session.sessionAvailable) {
+      return {
+        error: session.error,
+        debugError: session.debugError,
+        sessionExpired: session.error === i18nDict[lang].security.sessionExpired,
+      };
+    }
+    if (!supabase) return { error: i18nDict[lang].security.supabaseRequired };
+
+    try {
+      const { data: existing, error: listError } = await supabase.auth.mfa.listFactors();
+      if (listError) {
+        console.error('Supabase MFA pre-enrollment listFactors failed:', listError);
+        return {
+          error: translateMfaError(listError.message, lang),
+          debugError: listError.message,
+        };
+      }
+
+      const staleFactors = existing.all.filter(
+        (factor) => factor.factor_type === 'totp' && factor.status === 'unverified',
+      );
+      for (const factor of staleFactors) {
+        const { error: cleanupError } = await supabase.auth.mfa.unenroll({ factorId: factor.id });
+        if (cleanupError) {
+          console.warn('Unable to remove unfinished Supabase MFA factor:', cleanupError);
+        }
+      }
+
+      const { data, error } = await supabase.auth.mfa.enroll({
+        factorType: 'totp',
+        friendlyName: 'KREDO Authenticator',
+      });
+      if (error) {
+        console.error('Supabase MFA enroll failed:', error);
+        return {
+          error: translateMfaError(error.message, lang),
+          debugError: error.message,
+        };
+      }
+      if (!data?.id || !data.totp?.secret || (!data.totp.qr_code && !data.totp.uri)) {
+        const debugError = 'Supabase MFA enroll returned incomplete TOTP data.';
+        console.error(debugError, data);
+        return {
+          error: i18nDict[lang].security.mfaQrError,
+          debugError,
+        };
+      }
+
+      return {
+        factorId: data.id,
+        qrCode: data.totp.qr_code,
+        secret: data.totp.secret,
+        uri: data.totp.uri,
+      };
+    } catch (error: any) {
+      const debugError = error?.message || String(error);
+      console.error('Unexpected Supabase MFA enrollment error:', error);
+      return {
+        error: translateMfaError(debugError, lang),
+        debugError,
+      };
+    }
+  },
+
+  discardTotpEnrollment: async (factorId: string): Promise<void> => {
+    if (!supabase || !factorId) return;
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) console.error('Unable to discard unfinished MFA enrollment:', error.message);
+  },
+
+  verifyTotpFactor: async (
+    factorId: string,
+    code: string,
+    lang: Language = 'ua',
+  ): Promise<KredoMfaResult> => {
+    const session = await requireSupabaseSession(lang);
+    if (!session.sessionAvailable) {
+      return {
+        success: false,
+        error: session.error,
+        debugError: session.debugError,
+        sessionExpired: session.error === i18nDict[lang].security.sessionExpired,
+      };
+    }
+    if (!supabase) return { success: false, error: i18nDict[lang].security.supabaseRequired };
+    const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId });
+    if (challengeError) {
+      console.error('Supabase MFA challenge failed:', challengeError);
+      return {
+        success: false,
+        error: translateMfaError(challengeError.message, lang),
+        debugError: challengeError.message,
+      };
+    }
+    const { error } = await supabase.auth.mfa.verify({
+      factorId,
+      challengeId: challenge.id,
+      code,
+    });
+    if (error) {
+      console.error('Supabase MFA verify failed:', error);
+      return {
+        success: false,
+        error: translateMfaError(error.message, lang),
+        debugError: error.message,
+      };
+    }
+    return { success: true };
+  },
+
+  unenrollTotp: async (
+    factorId: string,
+    code: string,
+    lang: Language = 'ua',
+  ): Promise<KredoMfaResult> => {
+    const verified = await KredoAuth.verifyTotpFactor(factorId, code, lang);
+    if (!verified.success) return verified;
+    if (!supabase) return { success: false, error: i18nDict[lang].security.supabaseRequired };
+    const { error } = await supabase.auth.mfa.unenroll({ factorId });
+    if (error) {
+      console.error('Supabase MFA unenroll failed:', error);
+      return {
+        success: false,
+        error: translateMfaError(error.message, lang),
+        debugError: error.message,
+      };
+    }
+    return { success: true };
+  },
+
   verifyEmailCode: async (email: string, code: string, lang: Language = 'ua'): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
     const t = i18nDict[lang] || i18nDict.ua;
 
@@ -406,7 +818,6 @@ export const KredoAuth = {
         if (!data.user) {
           return { success: false, error: t.auth.identityFailed };
         }
-        await supabase.from('profiles').update({ email_verified: true }).eq('id', data.user.id);
         const profile = await buildSupabaseProfile(data.user);
         localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
         return { success: true, user: profile };

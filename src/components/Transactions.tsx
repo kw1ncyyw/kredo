@@ -3,11 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RoutePath, Language, AppTheme, EscrowDeal, DealStatus, DealRole } from '../types';
 import { i18nDict } from '../messages';
-import { Search, Filter, ShieldCheck, HelpCircle, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, XCircle, ArrowUpRight, ArrowDownLeft, Landmark } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { Search, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, XCircle, Landmark, PlusCircle, ShieldCheck } from 'lucide-react';
 
 interface TransactionsProps {
   deals: EscrowDeal[];
@@ -17,6 +16,7 @@ interface TransactionsProps {
   sendDealMessage: (dealId: string, text: string, sender: 'user' | 'partner' | 'system') => void;
   selectedDealId: string;
   setSelectedDealId: (id: string | '') => void;
+  setRoute: (route: RoutePath) => void;
 }
 
 export default function Transactions({
@@ -27,9 +27,11 @@ export default function Transactions({
   sendDealMessage,
   selectedDealId,
   setSelectedDealId,
+  setRoute,
 }: TransactionsProps) {
   const t = i18nDict[lang];
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const replyTimerRef = useRef<number | null>(null);
 
   // Filter states
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +41,10 @@ export default function Transactions({
   // Chat message textbox
   const [messageText, setMessageText] = useState('');
 
-  const activeDeal = deals.find(d => d.id === selectedDealId) || (deals.length > 0 ? deals[0] : null);
+  const activeDeal = useMemo(
+    () => deals.find((deal) => deal.id === selectedDealId) || deals[0] || null,
+    [deals, selectedDealId],
+  );
 
   // Auto scroll chat to bottom when messages list changes
   useEffect(() => {
@@ -55,16 +60,20 @@ export default function Transactions({
     }
   }, [deals, selectedDealId, setSelectedDealId]);
 
+  useEffect(() => () => {
+    if (replyTimerRef.current) window.clearTimeout(replyTimerRef.current);
+  }, []);
+
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!messageText.trim() || !activeDeal) return;
 
     sendDealMessage(activeDeal.id, messageText.trim(), 'user');
-    const typedText = messageText.trim();
     setMessageText('');
 
     // Trigger mock partner/arbiter automated realistic responses to demonstrate high fidelity
-    setTimeout(() => {
+    if (replyTimerRef.current) window.clearTimeout(replyTimerRef.current);
+    replyTimerRef.current = window.setTimeout(() => {
       let mockReply = '';
       if (activeDeal.status === 'created') {
         mockReply = `Alright, I reviewed the conditions of "${activeDeal.title}". Let me know once you fund the deposition so I can prepare delivery in my local inventory.`;
@@ -104,13 +113,38 @@ export default function Transactions({
   };
 
   // Filters calculation
-  const filteredDeals = deals.filter(deal => {
-    const matchesSearch = deal.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                          deal.partnerName.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesRole = roleFilter === 'all' ? true : deal.role === roleFilter;
-    const matchesStatus = statusFilter === 'all' ? true : deal.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  const filteredDeals = useMemo(() => {
+    const normalizedSearch = searchTerm.trim().toLowerCase();
+    return deals.filter((deal) => {
+      const matchesSearch = !normalizedSearch
+        || deal.title.toLowerCase().includes(normalizedSearch)
+        || deal.partnerName.toLowerCase().includes(normalizedSearch);
+      const matchesRole = roleFilter === 'all' || deal.role === roleFilter;
+      const matchesStatus = statusFilter === 'all' || deal.status === statusFilter;
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [deals, roleFilter, searchTerm, statusFilter]);
+
+  const emptyState = {
+    ua: {
+      title: 'У вас ще немає угод',
+      text: 'Створіть першу безпечну угоду та відстежуйте її статус у кабінеті.',
+      button: 'Створити угоду',
+      noResults: 'За вибраними фільтрами угод не знайдено.',
+    },
+    ru: {
+      title: 'У вас пока нет сделок',
+      text: 'Создайте первую безопасную сделку и отслеживайте её статус в кабинете.',
+      button: 'Создать сделку',
+      noResults: 'По выбранным фильтрам сделки не найдены.',
+    },
+    en: {
+      title: 'You have no deals yet',
+      text: 'Create your first secure deal and track its status from your account.',
+      button: 'Create a deal',
+      noResults: 'No deals match the selected filters.',
+    },
+  }[lang];
 
   const formatMoney = (val: number, curStr: string = 'USD') => {
     return new Intl.NumberFormat(lang === 'ua' ? 'uk-UA' : 'en-US', {
@@ -144,12 +178,14 @@ export default function Transactions({
       <div className="max-w-7xl mx-auto">
         
         {/* Header Grid */}
-        <div className="mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-stone-503/5">
+        <div className={`mb-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 rounded-[2rem] border p-6 sm:p-8 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+        }`}>
           <div>
             <h1 className={`text-2xl font-bold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-stone-950'}`}>
               {t.deals.all}
             </h1>
-            <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-stone-500' : 'text-stone-400'}`}>
+            <p className={`text-sm mt-2 max-w-2xl leading-6 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
               {lang === 'ua' ? 'Репозиторій безпечних угод ескроу. Перевіряйте статус або відкривайте підтверджені файли чатів з партнерами.' : lang === 'ru' ? 'Репозиторий безопасных сделок эскроу. Отслеживайте статус или загружайте файлы чатов.' : 'Secure Escrow agreements repository tracking. Review status or open secured partner chat files.'}
             </p>
           </div>
@@ -162,8 +198,8 @@ export default function Transactions({
           <div className="lg:col-span-5 space-y-4">
             
             {/* Search controls & Filters */}
-            <div className={`p-4 rounded-xl border flex flex-col gap-3.5 ${
-              theme === 'dark' ? 'bg-[#080808]/80 border-stone-900' : 'bg-white border-stone-200 shadow-sm'
+            <div className={`rounded-2xl border p-3.5 flex flex-col gap-3 ${
+              theme === 'dark' ? 'bg-[#0b0b0b]/75 border-white/[0.07]' : 'bg-white/80 border-stone-200/80 shadow-sm'
             }`}>
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
@@ -172,7 +208,7 @@ export default function Transactions({
                   placeholder={t.deals.searchPl}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full text-xs font-semibold pl-9 pr-4 py-2.5 rounded-lg border transition-all ${
+                  className={`w-full text-xs font-semibold pl-9 pr-4 py-2.5 rounded-xl border transition-all ${
                     theme === 'dark'
                       ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-550'
                       : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
@@ -183,11 +219,11 @@ export default function Transactions({
               {/* Filters dropdown row */}
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="block text-[9px] uppercase font-bold tracking-wider text-stone-500 mb-1">{t.deals.filterRole}:</label>
+                  <label className="block text-xs font-bold text-stone-500 mb-1.5">{t.deals.filterRole}:</label>
                   <select
                     value={roleFilter}
                     onChange={(e: any) => setRoleFilter(e.target.value)}
-                    className={`w-full text-[10px] font-bold px-2 py-1.5 rounded border appearance-none transition-all ${
+                    className={`w-full text-sm font-semibold px-3 py-2.5 rounded-xl border appearance-none transition-all ${
                       theme === 'dark' ? 'bg-stone-950 border-stone-900 text-white' : 'bg-stone-50 border-stone-200 text-stone-900'
                     }`}
                   >
@@ -198,11 +234,11 @@ export default function Transactions({
                 </div>
 
                 <div>
-                  <label className="block text-[9px] uppercase font-bold tracking-wider text-stone-500 mb-1">{t.deals.filterStatus}:</label>
+                  <label className="block text-xs font-bold text-stone-500 mb-1.5">{t.deals.filterStatus}:</label>
                   <select
                     value={statusFilter}
                     onChange={(e: any) => setStatusFilter(e.target.value)}
-                    className={`w-full text-[10px] font-bold px-2 py-1.5 rounded border appearance-none transition-all ${
+                    className={`w-full text-sm font-semibold px-3 py-2.5 rounded-xl border appearance-none transition-all ${
                       theme === 'dark' ? 'bg-stone-950 border-stone-900 text-white' : 'bg-stone-50 border-stone-200 text-stone-900'
                     }`}
                   >
@@ -221,10 +257,30 @@ export default function Transactions({
             {/* List entries */}
             <div className="space-y-3 max-h-[70vh] overflow-y-auto no-scrollbar pr-1">
               {filteredDeals.length === 0 ? (
-                <div className={`p-8 text-center rounded-xl border border-dashed text-xs ${
+                <div className={`rounded-[1.5rem] border p-5 ${
                   theme === 'dark' ? 'border-stone-900 text-stone-500' : 'border-stone-200 text-stone-400'
                 }`}>
-                  {t.deals.emptyState}
+                  <p className="text-center text-sm font-semibold">{deals.length === 0 ? emptyState.title : emptyState.noResults}</p>
+                  {deals.length === 0 && (
+                    <div className="mt-5 space-y-3" aria-hidden="true">
+                      {[0, 1].map((item) => (
+                        <div key={item} className={`rounded-2xl border p-4 ${
+                          theme === 'dark' ? 'border-white/[0.06] bg-white/[0.025]' : 'border-stone-200 bg-stone-50'
+                        }`}>
+                          <div className="flex items-center justify-between gap-4">
+                            <div className="space-y-2">
+                              <div className="h-3 w-28 rounded-full bg-stone-500/15" />
+                              <div className="h-2.5 w-20 rounded-full bg-stone-500/10" />
+                            </div>
+                            <div className="space-y-2">
+                              <div className="ml-auto h-3 w-16 rounded-full bg-emerald-500/10" />
+                              <div className="ml-auto h-2.5 w-12 rounded-full bg-stone-500/10" />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ) : (
                 filteredDeals.map((deal) => {
@@ -546,12 +602,41 @@ export default function Transactions({
 
               </div>
             ) : (
-              <div className="h-48 flex justify-center items-center text-xs text-stone-500">
-                {lang === 'ua'
-                  ? 'Створіть або виберіть угоду, щоб переглянути її деталі.'
-                  : lang === 'ru'
-                    ? 'Создайте или выберите сделку, чтобы просмотреть её детали.'
-                    : 'Create or select a deal to view its details.'}
+              <div className={`relative flex min-h-[380px] flex-col items-center justify-center overflow-hidden rounded-[2rem] border px-6 py-12 text-center ${
+                theme === 'dark'
+                  ? 'border-white/[0.08] bg-[#0b0b0b] shadow-[0_24px_70px_-45px_rgba(52,211,153,0.55)]'
+                  : 'border-stone-200 bg-white shadow-[0_24px_70px_-45px_rgba(5,150,105,0.4)]'
+              }`}>
+                <div className="pointer-events-none absolute inset-x-12 top-0 h-px bg-gradient-to-r from-transparent via-emerald-400/70 to-transparent" />
+                <div className={`mb-6 flex h-20 w-20 items-center justify-center rounded-3xl border ${
+                  theme === 'dark'
+                    ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-300'
+                    : 'border-emerald-500/15 bg-emerald-50 text-emerald-700'
+                }`}>
+                  <ShieldCheck className="h-9 w-9" />
+                </div>
+                <h2 className={`text-2xl font-black tracking-tight ${
+                  theme === 'dark' ? 'text-white' : 'text-stone-950'
+                }`}>
+                  {emptyState.title}
+                </h2>
+                <p className={`mt-3 max-w-md text-sm leading-6 ${
+                  theme === 'dark' ? 'text-stone-400' : 'text-stone-600'
+                }`}>
+                  {emptyState.text}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setRoute('create-deal')}
+                  className={`mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-6 text-sm font-bold transition-all hover:-translate-y-0.5 ${
+                    theme === 'dark'
+                      ? 'bg-white text-black hover:bg-stone-100'
+                      : 'bg-stone-950 text-white hover:bg-stone-800'
+                  }`}
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  <span>{emptyState.button}</span>
+                </button>
               </div>
             )}
           </div>

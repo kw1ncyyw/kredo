@@ -367,7 +367,7 @@ export default function Navbar({
                       : 'text-white hover:bg-stone-900 bg-black'
                   }`}
                 >
-                  {lang === 'ua' ? 'Реєстрація' : lang === 'ru' ? 'Регистрация' : 'Register'}
+                  {t.nav.register}
                 </button>
               </div>
             )}
@@ -503,17 +503,28 @@ export default function Navbar({
                     </div>
                   </>
                 ) : (
-                  <button
-                    id="mobile-login-entry-btn"
-                    onClick={() => handleNavClick('login', false)}
-                    className={`block w-full text-center py-2.5 rounded-lg text-sm font-semibold border ${
-                      theme === 'dark'
-                        ? 'border-stone-800 text-white bg-transparent'
-                        : 'border-stone-300 text-stone-900 bg-transparent'
-                    }`}
-                  >
-                    {t.nav.login}
-                  </button>
+                  <div className="grid grid-cols-1 gap-3">
+                    <button
+                      id="mobile-login-entry-btn"
+                      onClick={() => handleNavClick('login', false)}
+                      className={`block min-h-12 w-full rounded-xl border px-4 py-3 text-center text-base font-bold ${
+                        theme === 'dark'
+                          ? 'border-stone-700 bg-stone-900 text-white'
+                          : 'border-stone-300 bg-white text-stone-900'
+                      }`}
+                    >
+                      {t.nav.login}
+                    </button>
+                    <button
+                      id="mobile-register-entry-btn"
+                      onClick={() => handleNavClick('register', false)}
+                      className={`block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-bold shadow-md ${
+                        theme === 'dark' ? 'bg-white text-black' : 'bg-black text-white'
+                      }`}
+                    >
+                      {t.nav.register}
+                    </button>
+                  </div>
                 )}
 
                 <button

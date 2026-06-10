@@ -6,8 +6,7 @@
 import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme } from '../types';
 import { i18nDict } from '../messages';
-import { ShieldCheck, Save, CheckCircle2, ChevronRight } from 'lucide-react';
-import { motion } from 'motion/react';
+import { ShieldCheck, Save, CheckCircle2, ChevronRight, Languages, SunMoon, BellRing } from 'lucide-react';
 
 interface SettingsViewProps {
   lang: Language;
@@ -50,16 +49,18 @@ export default function SettingsView({
 
   return (
     <div className={theme === 'dark' ? 'text-stone-100' : 'text-stone-900'}>
-      <div className="max-w-5xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         
         {/* Header Title */}
-        <div className="mb-10 text-center sm:text-left">
+        <div className={`mb-8 rounded-[2rem] border p-6 sm:p-8 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+        }`}>
           <h1 className={`text-2xl sm:text-3xl font-extrabold tracking-tight ${
             theme === 'dark' ? 'text-white' : 'text-stone-90c text-stone-950'
           }`}>
             {t.settings.title}
           </h1>
-          <p className={`text-xs sm:text-sm mt-1.5 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-505'}`}>
+          <p className={`text-sm mt-2 ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
             {t.settings.subtitle}
           </p>
         </div>
@@ -68,8 +69,9 @@ export default function SettingsView({
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
           {/* Main options inputs forms (Col size 3) */}
-          <form onSubmit={handleSave} className={`lg:col-span-3 rounded-2xl p-6 sm:p-8 border space-y-6 ${
-            theme === 'dark' ? 'bg-[#080808]/90 border-stone-900 shadow-md' : 'bg-white border-stone-200 shadow-sm'
+          <form onSubmit={handleSave} className="lg:col-span-3 space-y-5">
+            <section className={`rounded-[2rem] p-6 sm:p-8 border ${
+            theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
           }`}>
             
             {/* Show update success alerts */}
@@ -81,10 +83,8 @@ export default function SettingsView({
             )}
 
             {/* General interface language or color mapping */}
-            <div className="space-y-4">
-              <h3 className={`text-xs font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-stone-500' : 'text-stone-405'}`}>
-                {t.settings.sectionUi}
-              </h3>
+            <div className="space-y-5">
+              <div className="flex items-center gap-3"><Languages className="h-5 w-5 text-emerald-500" /><h3 className="text-lg font-black">{t.settings.language}</h3></div>
 
               {/* Language selection */}
               <div>
@@ -95,7 +95,7 @@ export default function SettingsView({
                       key={l}
                       type="button"
                       onClick={() => handleLangChange(l)}
-                      className={`py-2 rounded-lg font-bold border transition-all ${
+                      className={`min-h-12 rounded-xl font-bold border transition-all ${
                         lang === l
                           ? theme === 'dark'
                             ? 'bg-white text-black border-white'
@@ -111,14 +111,19 @@ export default function SettingsView({
                 </div>
               </div>
 
-              {/* Theme Selector */}
+            </div>
+            </section>
+
+            <section className={`rounded-[2rem] p-6 sm:p-8 border ${
+              theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
+            }`}>
+              <div className="flex items-center gap-3 mb-5"><SunMoon className="h-5 w-5 text-emerald-500" /><h3 className="text-lg font-black">{t.settings.theme}</h3></div>
               <div>
-                <label className="block text-xs font-semibold mb-2">{t.settings.theme}</label>
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <button
                     type="button"
                     onClick={theme === 'dark' ? toggleTheme : undefined}
-                    className={`py-2 px-3 rounded-lg font-bold border transition-all ${
+                    className={`min-h-12 px-3 rounded-xl font-bold border transition-all ${
                       theme === 'light'
                         ? 'bg-black text-white border-black'
                         : 'bg-stone-950 border-stone-900 text-stone-400 hover:text-white'
@@ -129,7 +134,7 @@ export default function SettingsView({
                   <button
                     type="button"
                     onClick={theme === 'light' ? toggleTheme : undefined}
-                    className={`py-2 px-3 rounded-lg font-bold border transition-all ${
+                    className={`min-h-12 px-3 rounded-xl font-bold border transition-all ${
                       theme === 'dark'
                         ? 'bg-white text-black border-white'
                         : 'bg-stone-50 border-stone-200 text-stone-605'
@@ -139,21 +144,19 @@ export default function SettingsView({
                   </button>
                 </div>
               </div>
-            </div>
+            </section>
 
-            <hr className={`my-2 ${theme === 'dark' ? 'border-stone-900' : 'border-stone-100'}`} />
-
-            {/* Cybersecurity and general preference options toggles */}
+            <section className={`rounded-[2rem] p-6 sm:p-8 border ${
+              theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
+            }`}>
             <div className="space-y-4">
-              <h3 className={`text-xs font-bold uppercase tracking-widest ${theme === 'dark' ? 'text-stone-505' : 'text-stone-400'}`}>
-                {t.settings.sectionSec}
-              </h3>
+              <div className="flex items-center gap-3"><BellRing className="h-5 w-5 text-emerald-500" /><h3 className="text-lg font-black">{lang === 'ua' ? 'Налаштування сповіщень' : lang === 'ru' ? 'Настройки уведомлений' : 'Notification preferences'}</h3></div>
 
               {/* 2-Factor check toggle */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-dashed bg-stone-500/5 border-stone-500/10">
+              <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border bg-stone-500/[0.04] border-stone-500/10">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wide tracking-tight">{t.settings.twoFactor}</label>
-                  <span className="text-[10px] text-stone-500 font-medium block mt-0.5">{lang === 'ua' ? 'Увімкнути обов\'язкову двофакторну перевірку.' : lang === 'ru' ? 'Включить обязательную двухфакторную проверку.' : 'Enforce mandatory biometric 2FA checks.'}</span>
+                  <span className="text-sm text-stone-500 font-medium block mt-1">{lang === 'ua' ? 'Додатковий захист важливих дій в акаунті.' : lang === 'ru' ? 'Дополнительная защита важных действий в аккаунте.' : 'Extra protection for important account actions.'}</span>
                 </div>
                 <button
                   type="button"
@@ -169,10 +172,10 @@ export default function SettingsView({
               </div>
 
               {/* Newsletter Toggle */}
-              <div className="flex items-center justify-between p-3.5 rounded-xl border border-dashed bg-stone-500/5 border-stone-500/10">
+              <div className="flex items-center justify-between gap-4 p-4 rounded-2xl border bg-stone-500/[0.04] border-stone-500/10">
                 <div>
                   <label className="block text-xs font-bold uppercase tracking-wide tracking-tight">{t.settings.marketing}</label>
-                  <span className="text-[10px] text-stone-505 text-stone-500 font-medium block mt-0.5">{lang === 'ua' ? 'Отримувати сповіщення про нові продукти.' : lang === 'ru' ? 'Получать уведомления о новых продуктах.' : 'Opt-in transaction volumes digests and security indices.'}</span>
+                  <span className="text-sm text-stone-500 font-medium block mt-1">{lang === 'ua' ? 'Отримувати корисні оновлення та новини KREDO.' : lang === 'ru' ? 'Получать полезные обновления и новости KREDO.' : 'Receive useful KREDO updates and product news.'}</span>
                 </div>
                 <button
                   type="button"
@@ -187,11 +190,12 @@ export default function SettingsView({
                 </button>
               </div>
             </div>
+            </section>
 
             <button
               id="settings-options-save-btn"
               type="submit"
-              className={`w-full py-3.5 mt-2 rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.01] ${
+              className={`w-full py-4 rounded-xl text-sm font-bold transition-all shadow-md hover:-translate-y-0.5 ${
                 theme === 'dark'
                   ? 'bg-white text-black hover:bg-stone-105'
                   : 'bg-black text-white hover:bg-stone-903'
@@ -211,8 +215,8 @@ export default function SettingsView({
               {lang === 'ua' ? 'Безпека акаунта' : lang === 'ru' ? 'Безопасность аккаунта' : 'Account security'}
             </h3>
 
-            <div className={`rounded-2xl p-6 border ${
-              theme === 'dark' ? 'bg-[#080808] border-stone-900' : 'bg-white border-stone-200'
+            <div className={`rounded-[2rem] p-6 border ${
+              theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 shadow-sm'
             }`}>
               <div className="flex items-center space-x-2 mb-3">
                 <ShieldCheck className="h-5 w-5 text-emerald-500" />

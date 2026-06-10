@@ -17,8 +17,9 @@ interface ContactPageProps {
 export default function ContactPage({ lang, theme }: ContactPageProps) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [subject, setSubject] = useState('General question');
+  const [topic, setTopic] = useState('General question');
   const [message, setMessage] = useState('');
+  const [website, setWebsite] = useState('');
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
@@ -44,6 +45,8 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
       successTitle: 'Запит надіслано успішно!',
       successDesc: 'Дякуємо! Наш менеджер або юрист зв’яжеться з вами найближчим часом.',
       validationError: 'Перевірте всі поля та email.',
+      messageLengthError: 'Повідомлення має містити не більше 5000 символів.',
+      spamError: 'Не вдалося надіслати звернення. Оновіть сторінку та спробуйте ще раз.',
       missingKeyError: 'Контактна форма тимчасово недоступна. Зверніться до служби підтримки.',
       sendError: 'Не вдалося надіслати звернення. Спробуйте пізніше.',
       saveError: 'Не вдалося зберегти звернення. Спробуйте ще раз.',
@@ -69,6 +72,8 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
       successTitle: 'Inquiry Submitted Successfully!',
       successDesc: 'Thank you! Our support team will contact you as soon as possible.',
       validationError: 'Check all fields and the email address.',
+      messageLengthError: 'The message must be no longer than 5,000 characters.',
+      spamError: 'We could not send your request. Refresh the page and try again.',
       missingKeyError: 'The contact form is temporarily unavailable. Please contact support.',
       sendError: 'We could not send your request. Please try again later.',
       saveError: 'We could not save your request. Please try again.',
@@ -94,6 +99,8 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
       successTitle: 'Запрос успешно отправлен!',
       successDesc: 'Спасибо! Юрист дежурной смены или дежурный менеджер свяжется с вами в течение 15 минут.',
       validationError: 'Проверьте все поля и email.',
+      messageLengthError: 'Сообщение должно содержать не более 5000 символов.',
+      spamError: 'Не удалось отправить обращение. Обновите страницу и попробуйте снова.',
       missingKeyError: 'Контактная форма временно недоступна. Обратитесь в службу поддержки.',
       sendError: 'Не удалось отправить обращение. Попробуйте позже.',
       saveError: 'Не удалось сохранить обращение. Попробуйте ещё раз.',
@@ -106,12 +113,29 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !email.trim() || !message.trim() || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    if (submitting) return;
+
+    const trimmedName = name.trim();
+    const trimmedEmail = email.trim();
+    const trimmedTopic = topic.trim();
+    const trimmedMessage = message.trim();
+
+    if (website.trim()) {
+      setSubmitError(t.spamError);
+      return;
+    }
+
+    if (!trimmedName || !trimmedEmail || !trimmedTopic || !trimmedMessage || !/^\S+@\S+\.\S+$/.test(trimmedEmail)) {
       setSubmitError(t.validationError);
       return;
     }
 
-    const accessKey = (import.meta as any).env?.VITE_WEB3FORMS_ACCESS_KEY?.trim();
+    if (trimmedMessage.length > 5000) {
+      setSubmitError(t.messageLengthError);
+      return;
+    }
+
+    const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY?.trim();
     if (!accessKey) {
       setSubmitError(t.missingKeyError);
       return;
@@ -121,36 +145,50 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
     setSubmitError('');
 
     try {
-      if (isSupabaseConfigured) {
-        const saveResult = await KredoData.submitContactRequest({
-          name: name.trim(),
-          email: email.trim(),
-          topic: subject,
-          message: message.trim(),
-          destination_email: 'kredo.support.ua@gmail.com',
-        });
-        if (!saveResult.success) {
-          setSubmitError(t.saveError);
-          return;
-        }
-      }
-
+      const controller = new AbortController();
+      const timeoutId = window.setTimeout(() => controller.abort(), 15000);
       const response = await fetch('https://api.web3forms.com/submit', {
         method: 'POST',
         headers: { 'content-type': 'application/json', accept: 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           access_key: accessKey,
-          name: name.trim(),
-          email: email.trim(),
-          topic: subject,
-          message: message.trim(),
+          name: trimmedName,
+          email: trimmedEmail,
+          topic: trimmedTopic,
+          message: trimmedMessage,
+          subject: 'KREDO: нове звернення з сайту',
         }),
-      });
+      }).finally(() => window.clearTimeout(timeoutId));
       const result = await response.json().catch(() => null);
       if (!response.ok || !result?.success) {
         throw new Error('web3forms_failed');
       }
-    } catch {
+
+      if (isSupabaseConfigured) {
+        void Promise.race([
+            KredoData.submitContactRequest({
+              name: trimmedName,
+              email: trimmedEmail,
+              topic: trimmedTopic,
+              message: trimmedMessage,
+              destination_email: 'kredo.support.ua@gmail.com',
+            }),
+            new Promise<{ success: false; error: string }>((resolve) => {
+              window.setTimeout(() => resolve({ success: false, error: 'timeout' }), 5000);
+            }),
+          ])
+          .then((saveResult) => {
+          if (!saveResult.success) {
+            console.warn('Contact request could not be saved to Supabase.');
+          }
+          })
+          .catch(() => {
+            console.warn('Contact request could not be saved to Supabase.');
+          });
+      }
+    } catch (error) {
+      console.error('Web3Forms contact submission failed.', error instanceof Error ? error.message : 'Unknown error');
       setSubmitError(t.sendError);
       return;
     } finally {
@@ -160,7 +198,9 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
     setSubmitted(true);
     setName('');
     setEmail('');
+    setTopic('General question');
     setMessage('');
+    setWebsite('');
   };
 
   return (
@@ -221,6 +261,18 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
                 }`}
               >
                 <div className="space-y-5">
+                  <div className="absolute -left-[10000px] h-px w-px overflow-hidden" aria-hidden="true">
+                    <label htmlFor="contact-website">Website</label>
+                    <input
+                      id="contact-website"
+                      name="website"
+                      type="text"
+                      tabIndex={-1}
+                      autoComplete="off"
+                      value={website}
+                      onChange={(e) => setWebsite(e.target.value)}
+                    />
+                  </div>
                   {submitError && (
                     <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3 text-sm font-semibold text-rose-500">
                       {submitError}
@@ -235,6 +287,8 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
                       <input
                         type="text"
                         required
+                        maxLength={100}
+                        autoComplete="name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         className={`w-full rounded-xl border px-3.5 py-3 text-sm font-semibold focus:outline-none focus:ring-1 ${
@@ -253,6 +307,8 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
                       <input
                         type="email"
                         required
+                        maxLength={254}
+                        autoComplete="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         className={`w-full rounded-xl border px-3.5 py-3 text-sm font-semibold focus:outline-none focus:ring-1 ${
@@ -270,8 +326,9 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
                       {t.subLabel}
                     </label>
                     <select
-                      value={subject}
-                      onChange={(e) => setSubject(e.target.value)}
+                      required
+                      value={topic}
+                      onChange={(e) => setTopic(e.target.value)}
                       className={`w-full rounded-xl border px-3.5 py-3 text-sm font-semibold focus:outline-none focus:ring-1 ${
                         theme === 'dark'
                           ? 'bg-stone-950 border-stone-800 text-white focus:border-white focus:ring-white/20'
@@ -293,6 +350,7 @@ export default function ContactPage({ lang, theme }: ContactPageProps) {
                     </label>
                     <textarea
                       required
+                      maxLength={5000}
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       rows={4}

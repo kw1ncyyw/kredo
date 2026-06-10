@@ -19,7 +19,7 @@ interface LoginRegisterProps {
   initialViewState?: AuthViewState;
 }
 
-type AuthViewState = 'login' | 'register' | 'forgot-password' | 'email-verification';
+type AuthViewState = 'login' | 'register' | 'forgot-password' | 'email-verification' | 'mfa-challenge';
 
 export default function LoginRegister({
   setRoute,
@@ -51,6 +51,8 @@ export default function LoginRegister({
   const [timer, setTimer] = useState(60);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [mfaFactorId, setMfaFactorId] = useState('');
+  const [mfaCode, setMfaCode] = useState('');
 
   // CAPTCHA states
   const [captchaCode, setCaptchaCode] = useState('');
@@ -97,13 +99,29 @@ export default function LoginRegister({
     }
   }, [viewState]);
 
+  useEffect(() => {
+    if (initialViewState !== 'login' || isLoggedIn) return;
+    let active = true;
+    KredoAuth.getPendingMfaFactor().then((factorId) => {
+      if (active && factorId) {
+        setMfaFactorId(factorId);
+        setViewState('mfa-challenge');
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [initialViewState, isLoggedIn]);
+
   const validateForm = () => {
     let tempErrors: { [key: string]: string } = {};
 
-    if (!email) {
-      tempErrors.email = t.auth.requiredError;
-    } else if (!/\S+@\S+\.\S+/.test(email)) {
-      tempErrors.email = t.auth.emailError;
+    if (viewState !== 'mfa-challenge') {
+      if (!email) {
+        tempErrors.email = t.auth.requiredError;
+      } else if (!/\S+@\S+\.\S+/.test(email)) {
+        tempErrors.email = t.auth.emailError;
+      }
     }
 
     if (viewState === 'login' || viewState === 'register') {
@@ -139,6 +157,10 @@ export default function LoginRegister({
       }
     }
 
+    if (viewState === 'mfa-challenge' && !/^\d{6}$/.test(mfaCode)) {
+      tempErrors.mfaCode = t.security.invalidCode;
+    }
+
     setErrors(tempErrors);
     return Object.keys(tempErrors).length === 0;
   };
@@ -157,7 +179,13 @@ export default function LoginRegister({
     try {
       if (viewState === 'login') {
         const response = await KredoAuth.signIn(email, password, rememberMe, lang);
-        if (response.success && response.user) {
+        if (response.success && response.mfaRequired && response.factorId) {
+          setMfaFactorId(response.factorId);
+          setMfaCode('');
+          setViewState('mfa-challenge');
+          setLoading(false);
+          return;
+        } else if (response.success && response.user) {
           setAuthSuccessMsg(t.auth.successLogin);
           setTimeout(() => {
             loginUser(response.user!);
@@ -203,6 +231,17 @@ export default function LoginRegister({
         } else {
           setGeneralError(response.error || tr.identityFailed);
         }
+      } else if (viewState === 'mfa-challenge') {
+        const response = await KredoAuth.verifyMfaLogin(mfaFactorId, mfaCode, lang);
+        if (response.success && response.user) {
+          setAuthSuccessMsg(t.security.mfaVerified);
+          setTimeout(() => {
+            loginUser(response.user!);
+            setRoute('dashboard');
+          }, 500);
+        } else {
+          setGeneralError(response.error || t.security.invalidCode);
+        }
       }
     } catch (err: any) {
       console.error('Authentication request failed:', err);
@@ -237,6 +276,11 @@ export default function LoginRegister({
             <div className="mb-4">
               <button
                 onClick={() => {
+                  if (viewState === 'mfa-challenge') {
+                    void KredoAuth.signOut();
+                    setMfaFactorId('');
+                    setMfaCode('');
+                  }
                   setViewState('login');
                   setErrors({});
                   setGeneralError('');
@@ -261,6 +305,7 @@ export default function LoginRegister({
               {viewState === 'register' && t.auth.registerTitle}
               {viewState === 'forgot-password' && tr.passwordRecovery}
               {viewState === 'email-verification' && tr.securityProtection}
+              {viewState === 'mfa-challenge' && t.security.twoFactor}
             </h2>
             <p className={`text-xs mt-1.5 font-medium ${
               theme === 'dark' ? 'text-stone-400' : 'text-stone-500'
@@ -269,6 +314,7 @@ export default function LoginRegister({
               {viewState === 'register' && t.auth.registerSubtitle}
               {viewState === 'forgot-password' && tr.enterVerifiedEmail}
               {viewState === 'email-verification' && tr.checkEmailSubmitCode}
+              {viewState === 'mfa-challenge' && t.security.mfaLoginDescription}
             </p>
           </div>
 
@@ -647,6 +693,35 @@ export default function LoginRegister({
               </div>
             )}
 
+            {viewState === 'mfa-challenge' && (
+              <div>
+                <label className={`block text-[11px] font-bold uppercase tracking-wider mb-2 ${
+                  theme === 'dark' ? 'text-stone-400' : 'text-stone-500'
+                }`}>
+                  {t.security.enterAuthCode}
+                </label>
+                <div className="relative">
+                  <ShieldAlert className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-500" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    value={mfaCode}
+                    onChange={(event) => setMfaCode(event.target.value.replace(/\D/g, '').slice(0, 6))}
+                    disabled={loading}
+                    autoFocus
+                    className={`w-full rounded-xl border py-3.5 pl-10 pr-4 text-center font-mono text-lg font-black tracking-[0.35em] outline-none transition ${
+                      theme === 'dark'
+                        ? 'border-stone-800 bg-stone-950 text-white focus:border-emerald-500/70'
+                        : 'border-stone-200 bg-stone-50 text-stone-950 focus:border-emerald-500'
+                    } ${errors.mfaCode ? 'border-rose-500' : ''}`}
+                  />
+                </div>
+                {errors.mfaCode && <p className="mt-1.5 text-[11px] font-semibold text-rose-500">{errors.mfaCode}</p>}
+              </div>
+            )}
+
             {/* Reusable Remember Me & Submit (Login & Register and verification) */}
             {viewState === 'login' && (
               <div className="flex items-center space-x-2">
@@ -685,6 +760,7 @@ export default function LoginRegister({
                 {viewState === 'register' && t.auth.registerBtn}
                 {viewState === 'forgot-password' && tr.resetPassword}
                 {viewState === 'email-verification' && tr.confirmVerification}
+                {viewState === 'mfa-challenge' && t.security.verifyCode}
               </span>
             </button>
           </form>
@@ -716,7 +792,7 @@ export default function LoginRegister({
           )}
 
           {/* Footer toggle */}
-          {viewState !== 'email-verification' && (
+          {viewState !== 'email-verification' && viewState !== 'mfa-challenge' && (
             <div className="mt-8 text-center select-none text-xs">
               <button
                 id="auth-toggle-view-btn"

@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, Language, AppTheme } from '../types';
 import { 
-  ShieldCheck, AlertTriangle, UploadCloud, FileText, Check, X, Mail, Phone, 
+  ShieldCheck, AlertTriangle, UploadCloud, FileText, Check, X, Mail,
   Calendar, Eye, ChevronRight, UserCheck, ShieldAlert, Award, ChevronDown, 
   Search, ExternalLink, HelpCircle, ArrowUpRight, ArrowDownLeft 
 } from 'lucide-react';
@@ -23,7 +23,6 @@ interface VerificationKYCProps {
 interface KYCState {
   status: 'Not Started' | 'Pending Review' | 'Verified' | 'Rejected';
   emailVerified: boolean;
-  phoneVerified: boolean;
   passportName: string | null;
   passportSize: string | null;
   selfieName: string | null;
@@ -82,6 +81,7 @@ export default function VerificationKYC({
       activeDisputes: 'Активні диспути',
       unresolvedSupport: 'Невирішені запити',
       escrowSecurity: 'KREDO — ваша третя сторона довіри.',
+      privateFiles: 'Документи зберігаються у приватному сховищі KREDO та не надсилаються електронною поштою.',
     },
     en: {
       title: 'Verification Center (KYC)',
@@ -123,6 +123,7 @@ export default function VerificationKYC({
       activeDisputes: 'Active Disputes',
       unresolvedSupport: 'Open Support Tickets',
       escrowSecurity: 'KREDO — your trusted escrow partner.',
+      privateFiles: 'Documents stay in KREDO private storage and are never sent by email.',
     },
     ru: {
       title: 'Центр верификации (KYC)',
@@ -164,6 +165,7 @@ export default function VerificationKYC({
       activeDisputes: 'Активные споры',
       unresolvedSupport: 'Неразрешенные тикеты',
       escrowSecurity: 'KREDO — ваша третья сторона доверия.',
+      privateFiles: 'Документы хранятся в приватном хранилище KREDO и не отправляются по электронной почте.',
     },
   }[lang] || {
     title: 'Verification Center (KYC)',
@@ -205,6 +207,7 @@ export default function VerificationKYC({
     activeDisputes: 'Active Disputes',
     unresolvedSupport: 'Open Support Tickets',
     escrowSecurity: 'KREDO — your trusted escrow partner.',
+    privateFiles: 'Documents stay in KREDO private storage and are never sent by email.',
   };
 
   const defaultSimulatedUsers: Array<Partial<UserProfile> & { kycState: string }> = [
@@ -243,7 +246,6 @@ export default function VerificationKYC({
     return {
       status: 'Not Started',
       emailVerified: false,
-      phoneVerified: false,
       passportName: null,
       passportSize: null,
       selfieName: null,
@@ -254,13 +256,6 @@ export default function VerificationKYC({
       documentNumber: '',
     };
   });
-
-  // OTP simulation states
-  const [phoneInput, setPhoneInput] = useState(user.phone || '');
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpInput, setOtpInput] = useState('');
-  const [otpSuccess, setOtpSuccess] = useState(false);
-  const [otpErrorFlag, setOtpErrorFlag] = useState(false);
 
   const [submissionLoading, setSubmissionLoading] = useState(false);
   const [submissionError, setSubmissionError] = useState('');
@@ -357,24 +352,6 @@ export default function VerificationKYC({
     }
   };
 
-  // OTP key confirms
-  const handleSendOtp = () => {
-    if (!phoneInput) return;
-    setOtpSent(true);
-    setOtpErrorFlag(false);
-  };
-
-  const handleVerifyOtp = () => {
-    if (otpInput === '1234') {
-      setOtpSuccess(true);
-      setOtpErrorFlag(false);
-      setKyc(prev => ({ ...prev, phoneVerified: true }));
-      updateProfile({ phone: phoneInput });
-    } else {
-      setOtpErrorFlag(true);
-    }
-  };
-
   // Submit Dossier
   const handleSubmitDossier = async () => {
     setSubmissionError('');
@@ -430,7 +407,7 @@ export default function VerificationKYC({
         passportUrl = result.passportPath || passportUrl;
         selfieUrl = result.selfiePath || selfieUrl;
 
-        const accessKey = (import.meta as any).env?.VITE_WEB3FORMS_ACCESS_KEY?.trim();
+        const accessKey = import.meta.env.VITE_WEB3FORMS_ACCESS_KEY?.trim();
         if (accessKey) {
           // This optional notice contains metadata only. KYC files and private paths are never emailed.
           void fetch('https://api.web3forms.com/submit', {
@@ -520,7 +497,6 @@ export default function VerificationKYC({
     setKyc({
       status: 'Not Started',
       emailVerified: false,
-      phoneVerified: false,
       passportName: null,
       passportSize: null,
       selfieName: null,
@@ -528,19 +504,18 @@ export default function VerificationKYC({
       reviewDate: null,
       adminNotes: null,
     });
-    setOtpSent(false);
-    setOtpInput('');
-    setOtpSuccess(false);
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-5 sm:px-8 py-10 sm:py-14">
+    <div className="max-w-6xl mx-auto py-4">
       {/* Main Grid Wrapper */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         
         {/* Left Side: Client-Side KYC Dashboard */}
-        <div className={user.role === 'admin' ? "lg:col-span-7 space-y-7" : "lg:col-span-12 max-w-4xl mx-auto w-full space-y-7"}>
-          <div className="flex flex-col">
+        <div className="lg:col-span-12 w-full space-y-7">
+          <div className={`rounded-[2rem] border p-6 sm:p-8 ${
+            theme === 'dark' ? 'border-white/[0.08] bg-[#101010]' : 'border-stone-200 bg-white shadow-sm'
+          }`}>
             <h1 className={`text-3xl sm:text-4xl font-extrabold tracking-tight ${theme === 'dark' ? 'text-white' : 'text-stone-900'}`}>
               {t.title}
             </h1>
@@ -549,8 +524,35 @@ export default function VerificationKYC({
             </p>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {[
+              { status: 'Not Started', label: t.statusNotStarted, color: 'stone' },
+              { status: 'Pending Review', label: t.statusPending, color: 'amber' },
+              { status: 'Verified', label: t.statusVerified, color: 'emerald' },
+              { status: 'Rejected', label: t.statusRejected, color: 'rose' },
+            ].map((item) => {
+              const active = kyc.status === item.status;
+              return (
+                <div key={item.status} className={`rounded-2xl border p-4 ${
+                  active
+                    ? item.color === 'emerald'
+                      ? 'border-emerald-500/25 bg-emerald-500/10'
+                      : item.color === 'amber'
+                        ? 'border-amber-500/25 bg-amber-500/10'
+                        : item.color === 'rose'
+                          ? 'border-rose-500/25 bg-rose-500/10'
+                          : theme === 'dark' ? 'border-white/15 bg-white/[0.06]' : 'border-stone-300 bg-stone-100'
+                    : theme === 'dark' ? 'border-white/[0.07] bg-[#0d0d0d] opacity-55' : 'border-stone-200 bg-white opacity-60'
+                }`}>
+                  <p className="text-sm font-bold">{item.label}</p>
+                  <div className={`mt-3 h-1.5 rounded-full ${active ? 'bg-emerald-500' : 'bg-stone-500/15'}`} />
+                </div>
+              );
+            })}
+          </div>
+
           {/* Current Status Banner Layout */}
-          <div className={`p-6 rounded-3xl border ${
+          <div className={`p-6 rounded-[2rem] border ${
             kyc.status === 'Verified' 
               ? theme === 'dark' ? 'bg-emerald-950/20 border-emerald-550/25 text-emerald-400' : 'bg-emerald-500/5 border-emerald-100 text-emerald-700 shadow-sm'
               : kyc.status === 'Rejected'
@@ -609,8 +611,8 @@ export default function VerificationKYC({
             <div className="space-y-4">
               
               {/* Step 1: Email verification */}
-              <div className={`p-5 rounded-2xl border ${
-                theme === 'dark' ? 'bg-stone-900/10 border-stone-900' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
+              <div className={`p-6 rounded-[2rem] border ${
+                theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between mb-2">
                   <span className={`text-xs font-extrabold uppercase tracking-wider ${theme === 'dark' ? 'text-stone-300' : 'text-stone-850'}`}>
@@ -648,8 +650,8 @@ export default function VerificationKYC({
               </div>
               
               {/* Step 2: Passport Document drag & drop upload */}
-              <div className={`p-5 rounded-2xl border ${
-                theme === 'dark' ? 'bg-stone-900/10 border-stone-900' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
+              <div className={`p-6 rounded-[2rem] border ${
+                theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between mb-4">
                   <span className={`text-xs font-extrabold uppercase tracking-wider ${theme === 'dark' ? 'text-stone-300' : 'text-stone-850'}`}>
@@ -687,7 +689,7 @@ export default function VerificationKYC({
                     onDragOver={(e) => handleDragOver(e, 'passport')}
                     onDragLeave={() => handleDragLeave('passport')}
                     onDrop={(e) => handleDrop(e, 'passport')}
-                    className={`p-6 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all ${
+                    className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
                       isDragPassport 
                         ? 'border-emerald-500 bg-emerald-500/5' 
                         : theme === 'dark' ? 'border-stone-800 bg-stone-950 hover:border-stone-700' : 'border-stone-300 bg-stone-50 hover:border-stone-400'
@@ -702,8 +704,8 @@ export default function VerificationKYC({
                     />
                     <label htmlFor="kyc-passport" className="cursor-pointer">
                       <UploadCloud className="h-8 w-8 text-stone-500 mx-auto mb-2" />
-                      <p className="text-[11px] font-extrabold text-stone-500 uppercase tracking-widest">{t.dragLabel}</p>
-                      <p className="text-[9px] text-stone-550 font-bold mt-1.5">PDF, PNG, JPG ({lang === 'ua' ? 'до' : lang === 'ru' ? 'до' : 'max'} 10 MB)</p>
+                      <p className="text-sm font-bold text-stone-500">{t.dragLabel}</p>
+                      <p className="text-xs text-stone-500 font-semibold mt-2">PDF, PNG, JPG ({lang === 'ua' ? 'до' : lang === 'ru' ? 'до' : 'max'} 10 MB)</p>
                     </label>
                   </div>
                 )}
@@ -752,8 +754,8 @@ export default function VerificationKYC({
               </div>
 
               {/* Step 4: Selfie upload with drag & drop */}
-              <div className={`p-5 rounded-2xl border ${
-                theme === 'dark' ? 'bg-stone-900/10 border-stone-900' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
+              <div className={`p-6 rounded-[2rem] border ${
+                theme === 'dark' ? 'bg-[#0d0d0d] border-white/[0.08]' : 'bg-white border-stone-200 text-stone-900 shadow-sm'
               }`}>
                 <div className="flex items-center justify-between mb-4">
                   <span className={`text-xs font-extrabold uppercase tracking-wider ${theme === 'dark' ? 'text-stone-300' : 'text-stone-850'}`}>
@@ -791,7 +793,7 @@ export default function VerificationKYC({
                     onDragOver={(e) => handleDragOver(e, 'selfie')}
                     onDragLeave={() => handleDragLeave('selfie')}
                     onDrop={(e) => handleDrop(e, 'selfie')}
-                    className={`p-6 border-2 border-dashed rounded-xl text-center cursor-pointer transition-all ${
+                    className={`p-8 border-2 border-dashed rounded-2xl text-center cursor-pointer transition-all ${
                       isDragSelfie 
                         ? 'border-emerald-500 bg-emerald-500/5' 
                         : theme === 'dark' ? 'border-stone-800 bg-stone-950 hover:border-stone-700' : 'border-stone-300 bg-stone-50 hover:border-stone-400'
@@ -806,8 +808,8 @@ export default function VerificationKYC({
                     />
                     <label htmlFor="kyc-selfie" className="cursor-pointer">
                       <UploadCloud className="h-8 w-8 text-stone-500 mx-auto mb-2" />
-                      <p className="text-[11px] font-extrabold text-stone-500 uppercase tracking-widest">{t.dragLabel}</p>
-                      <p className="text-[9px] text-stone-550 font-bold mt-1.5">PNG, JPG ({lang === 'ua' ? 'до' : lang === 'ru' ? 'до' : 'max'} 5 MB)</p>
+                      <p className="text-sm font-bold text-stone-500">{t.dragLabel}</p>
+                      <p className="text-xs text-stone-500 font-semibold mt-2">PNG, JPG ({lang === 'ua' ? 'до' : lang === 'ru' ? 'до' : 'max'} 5 MB)</p>
                     </label>
                   </div>
                 )}
@@ -847,12 +849,13 @@ export default function VerificationKYC({
 
           {/* Guidelines Alert Infobox */}
           <div className={`p-5 rounded-2xl border ${
-            theme === 'dark' ? 'bg-[#0b0b0f] border-indigo-950 text-indigo-400' : 'bg-sky-50 border-sky-100 text-sky-700 shadow-sm'
+            theme === 'dark' ? 'bg-emerald-500/[0.06] border-emerald-500/15 text-emerald-300' : 'bg-emerald-50 border-emerald-100 text-emerald-800 shadow-sm'
           }`}>
             <h4 className="text-xs font-black uppercase tracking-widest">{t.riskAlertTitle}</h4>
-            <p className={`text-[11px] mt-2 leading-relaxed font-semibold ${theme === 'dark' ? 'text-stone-400' : 'text-stone-605'}`}>
+            <p className={`text-sm mt-2 leading-6 font-semibold ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
               {t.riskAlertText}
             </p>
+            <p className="mt-3 text-sm font-bold">{t.privateFiles}</p>
           </div>
 
         </div>
