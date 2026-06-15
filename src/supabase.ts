@@ -332,6 +332,24 @@ async function buildSupabaseProfile(authUser: AuthUserLike, fallback?: Partial<U
 export const KredoAuth = {
   isConfigured: () => isSupabaseConfigured,
 
+  prepareRegistration: async (): Promise<void> => {
+    if (!supabase) return;
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      if (error) {
+        console.error('Unable to inspect session before registration:', error);
+        return;
+      }
+      if (data.session) {
+        const { error: signOutError } = await supabase.auth.signOut({ scope: 'local' });
+        if (signOutError) console.error('Unable to clear stale local auth session:', signOutError);
+      }
+      localStorage.removeItem(SESSION_KEY);
+    } catch (error) {
+      console.error('Unexpected registration session cleanup error:', error);
+    }
+  },
+
   ensureCurrentProfile: async (): Promise<{ success: boolean; error?: unknown }> => {
     if (!supabase) return { success: false, error: 'Supabase is not configured.' };
     const { data, error } = await supabase.auth.getUser();

@@ -39,10 +39,6 @@ export default function LoginRegister({
   const tr = t.auth;
   const [viewState, setViewState] = useState<AuthViewState>(initialViewState);
 
-  useEffect(() => {
-    setViewState(initialViewState);
-  }, [initialViewState]);
-
   // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -78,6 +74,63 @@ export default function LoginRegister({
   const [generalError, setGeneralError] = useState('');
   const [loading, setLoading] = useState(false);
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
+  const requestGeneration = useRef(0);
+  const transitionTimeout = useRef<number | null>(null);
+
+  const clearTransitionTimeout = () => {
+    if (transitionTimeout.current !== null) {
+      window.clearTimeout(transitionTimeout.current);
+      transitionTimeout.current = null;
+    }
+  };
+
+  const switchAuthMode = (target: 'login' | 'register', syncRoute = true) => {
+    requestGeneration.current += 1;
+    clearTransitionTimeout();
+    setLoading(false);
+    setViewState(target);
+    setErrors({});
+    setGeneralError('');
+    setAuthSuccessMsg('');
+    setVerificationCode('');
+    setTimer(60);
+    setMfaFactorId('');
+    setMfaCode('');
+    setPassword('');
+    setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    setCaptchaInput('');
+    otpRefs.current = [];
+
+    if (syncRoute) {
+      setRoute(target);
+    }
+  };
+
+  useEffect(() => {
+    if (initialViewState === 'login' || initialViewState === 'register') {
+      switchAuthMode(initialViewState, false);
+    } else {
+      setViewState(initialViewState);
+    }
+  }, [initialViewState]);
+
+  useEffect(() => {
+    const handleAuthMode = (event: Event) => {
+      const target = (event as CustomEvent<'login' | 'register'>).detail;
+      if (target === 'login' || target === 'register') {
+        switchAuthMode(target, false);
+      }
+    };
+
+    window.addEventListener('kredo-auth-mode', handleAuthMode);
+    return () => {
+      requestGeneration.current += 1;
+      clearTransitionTimeout();
+      window.removeEventListener('kredo-auth-mode', handleAuthMode);
+    };
+  }, []);
 
   // Sync first and last name to full name
   useEffect(() => {
@@ -190,25 +243,30 @@ export default function LoginRegister({
     e.preventDefault();
     setGeneralError('');
     setAuthSuccessMsg('');
-    
+
     if (!validateForm()) {
+      setLoading(false);
       return;
     }
 
+    const requestId = ++requestGeneration.current;
+    clearTransitionTimeout();
     setLoading(true);
 
     try {
       if (viewState === 'login') {
         const response = await KredoAuth.signIn(email, password, rememberMe, lang);
+        if (requestGeneration.current !== requestId) return;
+
         if (response.success && response.mfaRequired && response.factorId) {
           setMfaFactorId(response.factorId);
           setMfaCode('');
           setViewState('mfa-challenge');
-          setLoading(false);
           return;
         } else if (response.success && response.user) {
           setAuthSuccessMsg(t.auth.successLogin);
-          setTimeout(() => {
+          transitionTimeout.current = window.setTimeout(() => {
+            if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
           }, 800);
@@ -217,6 +275,9 @@ export default function LoginRegister({
           generateCaptcha();
         }
       } else if (viewState === 'register') {
+        await KredoAuth.prepareRegistration();
+        if (requestGeneration.current !== requestId) return;
+
         const response = await KredoAuth.signUp(
           email,
           password,
@@ -226,14 +287,13 @@ export default function LoginRegister({
           country,
           lang,
         );
+        if (requestGeneration.current !== requestId) return;
+
         if (response.success && response.user && response.emailSent) {
           setAuthSuccessMsg(tr.accountCreated);
           setTimer(60);
           setVerificationCode('');
-          setTimeout(() => {
-            setViewState('email-verification');
-            setLoading(false);
-          }, 1000);
+          setViewState('email-verification');
           return;
         } else {
           setGeneralError(response.error || tr.regFailed);
@@ -241,19 +301,25 @@ export default function LoginRegister({
         }
       } else if (viewState === 'forgot-password') {
         const response = await KredoAuth.resetPassword(email, lang);
+        if (requestGeneration.current !== requestId) return;
+
         if (response.success) {
           setAuthSuccessMsg(tr.recoverySent);
-          setTimeout(() => {
-            setViewState('login');
+          transitionTimeout.current = window.setTimeout(() => {
+            if (requestGeneration.current !== requestId) return;
+            switchAuthMode('login');
           }, 3000);
         } else {
           setGeneralError(response.error || tr.resetFailed);
         }
       } else if (viewState === 'email-verification') {
         const response = await KredoAuth.verifyEmailCode(email, normalizeEmailOtp(verificationCode), lang);
+        if (requestGeneration.current !== requestId) return;
+
         if (response.success && response.user) {
           setAuthSuccessMsg(response.warning || tr.identityVerified);
-          setTimeout(() => {
+          transitionTimeout.current = window.setTimeout(() => {
+            if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
           }, 800);
@@ -262,9 +328,12 @@ export default function LoginRegister({
         }
       } else if (viewState === 'mfa-challenge') {
         const response = await KredoAuth.verifyMfaLogin(mfaFactorId, mfaCode, lang);
+        if (requestGeneration.current !== requestId) return;
+
         if (response.success && response.user) {
           setAuthSuccessMsg(t.security.mfaVerified);
-          setTimeout(() => {
+          transitionTimeout.current = window.setTimeout(() => {
+            if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
           }, 500);
@@ -274,10 +343,14 @@ export default function LoginRegister({
       }
     } catch (err: any) {
       console.error('Authentication request failed:', err);
-      setGeneralError(tr.unexpectedError);
+      if (requestGeneration.current === requestId) {
+        setGeneralError(tr.unexpectedError);
+        if (viewState === 'register') generateCaptcha();
+      }
     } finally {
-      // Toggle loading
-      setLoading(false);
+      if (requestGeneration.current === requestId) {
+        setLoading(false);
+      }
     }
   };
 
@@ -294,7 +367,7 @@ export default function LoginRegister({
       <div className="w-full max-w-md">
         
         {/* Card housing the elements */}
-        <div className={`rounded-3xl p-8 border ${
+        <div className={`rounded-3xl p-5 sm:p-8 border ${
           theme === 'dark'
             ? 'bg-[#080808]/90 border-stone-800 shadow-[0_4px_30px_rgba(0,0,0,0.5)] backdrop-blur-xl'
             : 'bg-white border-stone-200 shadow-xl'
@@ -304,18 +377,14 @@ export default function LoginRegister({
           {viewState !== 'login' && (
             <div className="mb-4">
               <button
+                type="button"
                 onClick={() => {
                   if (viewState === 'mfa-challenge') {
                     void KredoAuth.signOut();
-                    setMfaFactorId('');
-                    setMfaCode('');
                   }
-                  setViewState('login');
-                  setErrors({});
-                  setGeneralError('');
-                  setAuthSuccessMsg('');
+                  switchAuthMode('login');
                 }}
-                className={`flex items-center space-x-1.5 text-xs font-bold transition-all transition-colors ${
+                className={`flex min-h-11 touch-manipulation items-center space-x-1.5 text-xs font-bold transition-colors ${
                   theme === 'dark' ? 'text-stone-400 hover:text-white' : 'text-stone-500 hover:text-stone-950'
                 }`}
               >
@@ -545,8 +614,16 @@ export default function LoginRegister({
                   <div className="text-right mt-1.5">
                     <button
                       type="button"
-                      onClick={() => setViewState('forgot-password')}
-                      className={`text-[11px] font-semibold hover:underline bg-transparent border-0 cursor-pointer ${
+                      onClick={() => {
+                        requestGeneration.current += 1;
+                        clearTransitionTimeout();
+                        setLoading(false);
+                        setErrors({});
+                        setGeneralError('');
+                        setAuthSuccessMsg('');
+                        setViewState('forgot-password');
+                      }}
+                      className={`min-h-11 touch-manipulation px-2 text-[11px] font-semibold hover:underline bg-transparent border-0 cursor-pointer ${
                         theme === 'dark' ? 'text-stone-400 hover:text-white' : 'text-stone-500 hover:text-stone-950'
                       }`}
                     >
@@ -718,24 +795,34 @@ export default function LoginRegister({
                   <button
                     type="button"
                     onClick={async () => {
-                        setLoading(true);
-                        setGeneralError('');
-                        try {
-                          const response = await KredoAuth.resendSignupCode(email, lang);
-                          if (response.success) {
-                            setTimer(60);
-                            setVerificationCode('');
-                            setAuthSuccessMsg(tr.codeResent);
-                            otpRefs.current[0]?.focus();
-                          } else {
-                            setGeneralError(response.error || tr.regFailed);
-                          }
-                        } finally {
+                      const requestId = ++requestGeneration.current;
+                      setLoading(true);
+                      setGeneralError('');
+                      setAuthSuccessMsg('');
+                      try {
+                        const response = await KredoAuth.resendSignupCode(email, lang);
+                        if (requestGeneration.current !== requestId) return;
+                        if (response.success) {
+                          setTimer(60);
+                          setVerificationCode('');
+                          setAuthSuccessMsg(tr.codeResent);
+                          otpRefs.current[0]?.focus();
+                        } else {
+                          setGeneralError(response.error || tr.regFailed);
+                        }
+                      } catch (error) {
+                        console.error('Resending signup code failed:', error);
+                        if (requestGeneration.current === requestId) {
+                          setGeneralError(tr.unexpectedError);
+                        }
+                      } finally {
+                        if (requestGeneration.current === requestId) {
                           setLoading(false);
                         }
+                      }
                     }}
                     disabled={timer > 0 || loading}
-                    className={`text-xs font-bold underline ${
+                    className={`min-h-11 touch-manipulation px-3 text-xs font-bold underline ${
                         timer > 0 ? 'text-stone-500 cursor-not-allowed' : 'text-emerald-500 hover:text-emerald-400'
                     }`}
                   >
@@ -800,7 +887,7 @@ export default function LoginRegister({
               id="auth-submit-btn"
               type="submit"
               disabled={loading || (viewState === 'email-verification' && !emailOtpIsValid)}
-              className={`w-full py-4 mt-2 rounded-2xl text-xs font-bold transition-all shadow-md active:scale-[0.98] select-none uppercase tracking-wider flex items-center justify-center space-x-2 ${
+              className={`w-full min-h-12 touch-manipulation py-4 mt-2 rounded-2xl text-xs font-bold transition-all shadow-md active:scale-[0.98] select-none uppercase tracking-wider flex items-center justify-center space-x-2 ${
                 theme === 'dark'
                   ? 'bg-white text-black hover:bg-stone-200'
                   : 'bg-black text-white hover:bg-stone-900'
@@ -831,6 +918,7 @@ export default function LoginRegister({
               </p>
               <button
                 id="demo-fill-btn"
+                type="button"
                 onClick={handleDemoFill}
                 className={`py-1.5 text-[10px] font-bold rounded-lg border uppercase hover:-translate-y-0.5 active:translate-y-0 transition-transform ${
                   theme === 'dark'
@@ -848,15 +936,12 @@ export default function LoginRegister({
             <div className="mt-8 text-center select-none text-xs">
               <button
                 id="auth-toggle-view-btn"
+                type="button"
                 onClick={() => {
                   const targetState = viewState === 'login' ? 'register' : 'login';
-                  setRoute(targetState);
-                  setViewState(targetState);
-                  setErrors({});
-                  setGeneralError('');
-                  setAuthSuccessMsg('');
+                  switchAuthMode(targetState);
                 }}
-                className={`font-semibold hover:underline bg-transparent border-0 cursor-pointer ${
+                className={`min-h-11 touch-manipulation px-4 font-semibold hover:underline bg-transparent border-0 cursor-pointer ${
                   theme === 'dark' ? 'text-stone-305 text-white/90' : 'text-stone-800 hover:text-stone-950'
                 }`}
               >

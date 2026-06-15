@@ -87,6 +87,15 @@ export default function Navbar({
 
   const handleNavClick = (action: RoutePath, isPublicSection: boolean) => {
     setMobileMenuOpen(false);
+    setLangDropdownOpen(false);
+    setUserDropdownOpen(false);
+
+    if (action === 'login' || action === 'register') {
+      setRoute(action);
+      window.dispatchEvent(new CustomEvent('kredo-auth-mode', { detail: action }));
+      window.scrollTo({ top: 0, behavior: 'auto' });
+      return;
+    }
     
     if (currentRoute === action) {
       // Same-page smooth scroll if navigating to the same route or section on it
@@ -399,7 +408,9 @@ export default function Navbar({
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               id="mobile-menu-btn"
-              className={`p-2 rounded-lg transition-all duration-200 ${
+              type="button"
+              aria-expanded={mobileMenuOpen}
+              className={`relative z-[60] min-h-11 min-w-11 p-2 rounded-lg transition-all duration-200 touch-manipulation ${
                 theme === 'dark' ? 'text-white' : 'text-stone-900'
               }`}
             >
@@ -418,7 +429,7 @@ export default function Navbar({
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
-            className={`md:hidden border-t overflow-hidden ${
+            className={`relative z-[55] md:hidden border-t overflow-hidden ${
               theme === 'dark' ? 'bg-[#080808] border-stone-900' : 'bg-white border-stone-200'
             }`}
           >
@@ -507,7 +518,8 @@ export default function Navbar({
                     <button
                       id="mobile-login-entry-btn"
                       onClick={() => handleNavClick('login', false)}
-                      className={`block min-h-12 w-full rounded-xl border px-4 py-3 text-center text-base font-bold ${
+                      type="button"
+                      className={`block min-h-12 w-full touch-manipulation rounded-xl border px-4 py-3 text-center text-base font-bold ${
                         theme === 'dark'
                           ? 'border-stone-700 bg-stone-900 text-white'
                           : 'border-stone-300 bg-white text-stone-900'
@@ -518,7 +530,8 @@ export default function Navbar({
                     <button
                       id="mobile-register-entry-btn"
                       onClick={() => handleNavClick('register', false)}
-                      className={`block min-h-12 w-full rounded-xl px-4 py-3 text-center text-base font-bold shadow-md ${
+                      type="button"
+                      className={`block min-h-12 w-full touch-manipulation rounded-xl px-4 py-3 text-center text-base font-bold shadow-md ${
                         theme === 'dark' ? 'bg-white text-black' : 'bg-black text-white'
                       }`}
                     >
