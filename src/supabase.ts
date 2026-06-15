@@ -116,6 +116,15 @@ type ProfileRow = {
   country?: string | null;
 };
 
+type AuthUserLike = {
+  id: string;
+  email?: string | null;
+  email_confirmed_at?: string | null;
+  confirmed_at?: string | null;
+  created_at?: string;
+  user_metadata?: Record<string, any>;
+};
+
 export type KredoMfaFactor = {
   id: string;
   friendlyName: string;
@@ -221,20 +230,83 @@ async function getMfaRequirement(): Promise<{
   return { required, factorId: required ? verifiedTotp.id : undefined };
 }
 
-async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfile>): Promise<UserProfile> {
-  let profileRow: ProfileRow | null = null;
+async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
+  if (!supabase) return null;
 
-  if (supabase) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name,phone,organization_name,country')
-      .eq('id', authUser.id)
-      .maybeSingle();
-    profileRow = data as ProfileRow | null;
+  const primary = await supabase
+    .from('profiles')
+    .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name,phone')
+    .eq('id', userId)
+    .maybeSingle();
+  if (!primary.error) return primary.data as ProfileRow | null;
+
+  console.warn('Profile lookup with phone column failed; retrying core columns:', primary.error);
+  const fallback = await supabase
+    .from('profiles')
+    .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name')
+    .eq('id', userId)
+    .maybeSingle();
+  if (fallback.error) {
+    console.error('Supabase profile lookup failed:', fallback.error);
+    return null;
+  }
+  return fallback.data as ProfileRow | null;
+}
+
+async function ensureSupabaseProfile(authUser: AuthUserLike): Promise<{
+  success: boolean;
+  error?: unknown;
+}> {
+  if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+
+  const existing = await supabase
+    .from('profiles')
+    .select('id')
+    .eq('id', authUser.id)
+    .maybeSingle();
+  if (!existing.error && existing.data) return { success: true };
+  if (existing.error) {
+    console.error('Supabase profile existence check failed:', existing.error);
   }
 
+  const metadata = authUser.user_metadata || {};
+  const baseProfile = {
+    id: authUser.id,
+    email: authUser.email || '',
+    first_name: String(metadata.first_name || '').trim(),
+    last_name: String(metadata.last_name || '').trim(),
+    role: 'user',
+    email_verified: !!(authUser.email_confirmed_at || authUser.confirmed_at),
+    kyc_status: 'Not Started',
+  };
+  const phone = String(metadata.phone || '').trim();
+  const primary = await supabase
+    .from('profiles')
+    .upsert({ ...baseProfile, phone }, { onConflict: 'id' });
+  if (!primary.error) return { success: true };
+
+  console.error('Supabase verified profile upsert failed:', primary.error);
+  const missingPhoneColumn = (
+    primary.error.code === 'PGRST204'
+    || primary.error.message?.toLowerCase().includes('phone')
+  );
+  if (!missingPhoneColumn) return { success: false, error: primary.error };
+
+  const fallback = await supabase
+    .from('profiles')
+    .upsert(baseProfile, { onConflict: 'id' });
+  if (fallback.error) {
+    console.error('Supabase core profile upsert failed:', fallback.error);
+    return { success: false, error: fallback.error };
+  }
+  return { success: true };
+}
+
+async function buildSupabaseProfile(authUser: AuthUserLike, fallback?: Partial<UserProfile>): Promise<UserProfile> {
+  const profileRow = await fetchProfileRow(authUser.id);
+
   const databaseName = [profileRow?.first_name, profileRow?.last_name].filter(Boolean).join(' ').trim();
-  const emailVerified = !!authUser.email_confirmed_at || !!profileRow?.email_verified;
+  const emailVerified = !!(authUser.email_confirmed_at || authUser.confirmed_at) || !!profileRow?.email_verified;
   const kycStatus = profileRow?.kyc_status || fallback?.kyc_status || 'Not Started';
 
   return {
@@ -260,6 +332,16 @@ async function buildSupabaseProfile(authUser: any, fallback?: Partial<UserProfil
 export const KredoAuth = {
   isConfigured: () => isSupabaseConfigured,
 
+  ensureCurrentProfile: async (): Promise<{ success: boolean; error?: unknown }> => {
+    if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      if (error) console.error('Unable to load current user for profile retry:', error);
+      return { success: false, error: error || 'No authenticated user.' };
+    }
+    return ensureSupabaseProfile(data.user);
+  },
+
   // Restore current session securely
   restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean; mfaRequired?: boolean }> => {
     try {
@@ -281,6 +363,10 @@ export const KredoAuth = {
         if (mfa.required) {
           localStorage.removeItem(SESSION_KEY);
           return { user: null, expired: false, mfaRequired: true };
+        }
+        const ensuredProfile = await ensureSupabaseProfile(data.session.user);
+        if (!ensuredProfile.success) {
+          console.error('Dashboard profile retry failed:', ensuredProfile.error);
         }
         const userProfile = await buildSupabaseProfile(data.session.user, cachedProfile || undefined);
         localStorage.setItem(SESSION_KEY, JSON.stringify(userProfile));
@@ -404,6 +490,10 @@ export const KredoAuth = {
           if (mfa.required && mfa.factorId) {
             localStorage.removeItem(SESSION_KEY);
             return { success: true, mfaRequired: true, factorId: mfa.factorId };
+          }
+          const ensuredProfile = await ensureSupabaseProfile(data.user);
+          if (!ensuredProfile.success) {
+            console.error('Sign-in profile retry failed:', ensuredProfile.error);
           }
           const profile = await buildSupabaseProfile(data.user, { balance: 145000 });
           
@@ -815,7 +905,12 @@ export const KredoAuth = {
     return { success: true };
   },
 
-  verifyEmailCode: async (email: string, code: string, lang: Language = 'ua'): Promise<{ success: boolean; error?: string; user?: UserProfile }> => {
+  verifyEmailCode: async (email: string, code: string, lang: Language = 'ua'): Promise<{
+    success: boolean;
+    error?: string;
+    warning?: string;
+    user?: UserProfile;
+  }> => {
     const t = i18nDict[lang] || i18nDict.ua;
 
     if (!/^(?:\d{6}|\d{8})$/.test(code)) {
@@ -832,43 +927,30 @@ export const KredoAuth = {
         if (error) {
           return { success: false, error: translateAuthError(error.message, lang) };
         }
-        if (!data.user) {
+        let authUser = data.user;
+        if (!authUser) {
+          const { data: currentUser, error: userError } = await supabase.auth.getUser();
+          if (userError) console.error('Unable to load verified Supabase user:', userError);
+          authUser = currentUser.user;
+        }
+        if (!authUser) {
           return { success: false, error: t.auth.identityFailed };
         }
 
-        const metadata = data.user.user_metadata || {};
-        const firstName = String(metadata.first_name || '').trim();
-        const lastName = String(metadata.last_name || '').trim();
-        const phone = String(metadata.phone || '').trim();
-        const country = String(metadata.country || 'Ukraine').trim();
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .upsert({
-            id: data.user.id,
-            email: data.user.email || email.trim().toLowerCase(),
-            first_name: firstName,
-            last_name: lastName,
-            phone,
-            organization_name: '',
-            country,
-            role: 'user',
-            email_verified: true,
-            kyc_status: 'Not Started',
-          }, { onConflict: 'id' });
-        if (profileError) {
-          console.error('Verified user profile creation failed:', profileError);
-          return {
-            success: false,
-            error: lang === 'ua'
-              ? 'Email підтверджено, але не вдалося створити профіль. Спробуйте увійти повторно.'
-              : lang === 'ru'
-                ? 'Email подтверждён, но не удалось создать профиль. Попробуйте войти снова.'
-                : 'Email was verified, but the profile could not be created. Please sign in again.',
-          };
+        const profileResult = await ensureSupabaseProfile(authUser);
+        const warning = profileResult.success
+          ? undefined
+          : lang === 'ua'
+            ? 'Email підтверджено. Профіль буде синхронізовано автоматично після входу.'
+            : lang === 'ru'
+              ? 'Email подтверждён. Профиль будет синхронизирован автоматически после входа.'
+              : 'Email verified. Your profile will sync automatically after sign-in.';
+        if (!profileResult.success) {
+          console.error('Non-blocking verified profile creation failure:', profileResult.error);
         }
-        const profile = await buildSupabaseProfile(data.user);
+        const profile = await buildSupabaseProfile(authUser);
         localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
-        return { success: true, user: profile };
+        return { success: true, user: profile, warning };
       } catch (err: any) {
         return { success: false, error: translateAuthError(err.message || 'Verification failed.', lang) };
       }

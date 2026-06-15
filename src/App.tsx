@@ -68,6 +68,7 @@ export default function App() {
   const routeInitializationStarted = useRef(false);
   const sessionRestoreStarted = useRef(false);
   const notificationsLoadedFor = useRef<string | null>(null);
+  const profileEnsureAttemptedFor = useRef<string | null>(null);
 
   // Auto path checking URL routing for `/ua`, `/en`, `/ru` prefixes
   useEffect(() => {
@@ -263,6 +264,19 @@ export default function App() {
       setRoute('dashboard');
     }
   }, [currentRoute, isLoggedIn, user]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isLoggedIn || !user || currentRoute !== 'dashboard') return;
+    if (profileEnsureAttemptedFor.current === user.id) return;
+    profileEnsureAttemptedFor.current = user.id;
+
+    KredoAuth.ensureCurrentProfile().then((result) => {
+      if (!result.success) {
+        profileEnsureAttemptedFor.current = null;
+        console.error('Dashboard missing-profile retry failed:', result.error);
+      }
+    });
+  }, [currentRoute, isLoggedIn, user?.id]);
 
   // Save states modifications to local storage
   useEffect(() => {

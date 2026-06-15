@@ -252,7 +252,7 @@ export default function LoginRegister({
       } else if (viewState === 'email-verification') {
         const response = await KredoAuth.verifyEmailCode(email, normalizeEmailOtp(verificationCode), lang);
         if (response.success && response.user) {
-          setAuthSuccessMsg(tr.identityVerified);
+          setAuthSuccessMsg(response.warning || tr.identityVerified);
           setTimeout(() => {
             loginUser(response.user!);
             setRoute('dashboard');

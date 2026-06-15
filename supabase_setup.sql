@@ -125,10 +125,6 @@ TO authenticated
 WITH CHECK (
   auth.uid() = id
   AND role = 'user'
-  AND email_verified = TRUE
-  AND kyc_status = 'Not Started'
-  AND email = COALESCE(auth.jwt()->>'email', '')
-  AND public.is_current_user_email_confirmed()
 );
 
 DROP POLICY IF EXISTS "System/Admins can read all profiles" ON public.profiles;
