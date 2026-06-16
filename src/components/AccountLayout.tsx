@@ -70,7 +70,7 @@ export default function AccountLayout({
       notifications: 'Notifications',
       profile: 'My profile',
       settings: 'Settings',
-      admin: 'Admin panel',
+      admin: 'Admin Panel',
       roleLoading: 'Checking role',
     },
   }[lang]), [lang]);

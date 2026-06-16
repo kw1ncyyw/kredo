@@ -236,10 +236,11 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
 
   const primary = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, email, role, first_name, last_name, phone, organization_name, country, email_verified, kyc_status, kyc_notes, created_at')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
   if (!primary.error) {
+    console.log('KREDO fetched profile:', primary.data);
     console.log('KREDO profile role:', primary.data?.role);
     return primary.data as ProfileRow | null;
   }
@@ -247,13 +248,14 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
   console.warn('Profile lookup failed; retrying once:', primary.error);
   const fallback = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, email, role, first_name, last_name, phone, organization_name, country, email_verified, kyc_status, kyc_notes, created_at')
     .eq('id', userId)
-    .single();
+    .maybeSingle();
   if (fallback.error) {
     console.error('Supabase profile lookup failed:', fallback.error);
     return null;
   }
+  console.log('KREDO fetched profile:', fallback.data);
   console.log('KREDO profile role:', fallback.data?.role);
   return fallback.data as ProfileRow | null;
 }
@@ -379,6 +381,7 @@ export const KredoAuth = {
       if (error) console.error('Unable to refresh current profile:', error);
       return { success: false, error: error || 'No authenticated user.' };
     }
+    console.log('KREDO auth user:', data.user?.id, data.user?.email);
     const ensured = await ensureSupabaseProfile(data.user);
     if (!ensured.success) {
       console.error('Profile refresh ensure failed:', ensured.error);
@@ -404,6 +407,7 @@ export const KredoAuth = {
           localStorage.removeItem(SESSION_KEY);
           return { user: null, expired: !!cachedProfile };
         }
+        console.log('KREDO auth user:', data.session.user?.id, data.session.user?.email);
         const mfa = await getMfaRequirement();
         if (mfa.error) {
           console.error('Unable to verify MFA assurance level:', mfa.error);
