@@ -20,7 +20,7 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { KredoData, isSupabaseConfigured } from '../supabase';
+import { KredoData, isAdminProfileRole, isSupabaseConfigured } from '../supabase';
 
 interface AdminPanelProps {
   user: UserProfile;
@@ -279,9 +279,10 @@ export default function AdminPanel({
   const [kycRequests, setKycRequests] = useState<AdminKyc[]>(fallbackKyc);
   const [contacts, setContacts] = useState<AdminContact[]>(fallbackContacts);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const isAdmin = isAdminProfileRole(user.role);
 
   useEffect(() => {
-    if (!isSupabaseConfigured || user.role !== 'admin') return;
+    if (!isSupabaseConfigured || !isAdmin) return;
     let active = true;
     KredoData.listAdminData().then((result) => {
       if (!active) return;
@@ -293,7 +294,7 @@ export default function AdminPanel({
         id: profile.id,
         email: profile.email || '',
         fullName: [profile.first_name, profile.last_name].filter(Boolean).join(' ') || profile.email || '—',
-        role: profile.role === 'admin' ? 'admin' : 'user',
+        role: isAdminProfileRole(profile.role) ? 'admin' : 'user',
         kycStatus: profile.kyc_status || 'Not Started',
         emailVerified: profile.email_verified,
         createdAt: profile.created_at || '',
@@ -305,7 +306,7 @@ export default function AdminPanel({
     return () => {
       active = false;
     };
-  }, [t.loadError, user.role]);
+  }, [isAdmin, t.loadError]);
 
   const query = search.trim().toLowerCase();
   const filteredUsers = useMemo(() => users.filter((item) => (
@@ -403,7 +404,7 @@ export default function AdminPanel({
   const muted = theme === 'dark' ? 'text-stone-400' : 'text-stone-600';
   const tableHead = theme === 'dark' ? 'bg-white/[0.03] text-stone-400' : 'bg-stone-50 text-stone-500';
 
-  if (user.role !== 'admin') {
+  if (!isAdmin) {
     return (
       <div className={`min-h-[50vh] px-4 py-10 ${shell}`}>
         <div className={`mx-auto max-w-lg rounded-[2rem] border p-8 text-center ${card}`}>

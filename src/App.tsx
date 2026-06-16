@@ -4,7 +4,7 @@
  */
 
 import React, { Suspense, lazy, useState, useEffect, useCallback, useRef } from 'react';
-import { RoutePath, Language, AppTheme, UserProfile, EscrowDeal, SystemNotification, DealStatus } from './types';
+import { RoutePath, Language, AppTheme, UserProfile, EscrowDeal, SystemNotification, DealStatus, ProfileDebugInfo } from './types';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import Hero from './components/Hero';
@@ -62,6 +62,7 @@ export default function App() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [profileRoleLoading, setProfileRoleLoading] = useState(false);
+  const [profileDebug, setProfileDebug] = useState<ProfileDebugInfo | null>(null);
 
   // 5. Escrows & notific arrays
   const [deals, setDeals] = useState<EscrowDeal[]>(INITIAL_DEALS);
@@ -225,17 +226,20 @@ export default function App() {
 
     setProfileRoleLoading(isSupabaseConfigured);
     KredoAuth.restoreSession()
-      .then(({user: restoredUser, expired, mfaRequired}) => {
+      .then(({user: restoredUser, expired, mfaRequired, profileDebug: restoredDebug}) => {
        if (restoredUser) {
          setUser(restoredUser);
+         setProfileDebug(restoredDebug || restoredUser.profileDebug || null);
          setIsLoggedIn(true);
        } else if (mfaRequired) {
           setIsLoggedIn(false);
           setUser(null);
+          setProfileDebug(null);
           setRoute('login');
        } else if (expired) {
           setIsLoggedIn(false);
           setUser(null);
+          setProfileDebug(null);
           const routeLanguage = window.location.pathname.split('/').filter(Boolean)[0];
           alert(routeLanguage === 'ru'
             ? 'Сессия закончилась. Войдите снова.'
@@ -273,6 +277,58 @@ export default function App() {
         console.error('Dashboard missing-profile retry failed:', result.error);
       }
     });
+  }, [currentRoute, isLoggedIn, user?.id]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !isLoggedIn || !user) return;
+    if (![
+      'dashboard',
+      'transactions',
+      'create-deal',
+      'verification',
+      'notifications',
+      'profile',
+      'security',
+      'settings',
+      'admin',
+    ].includes(currentRoute)) return;
+
+    let active = true;
+    setProfileRoleLoading(true);
+    KredoAuth.refreshCurrentProfile()
+      .then((result) => {
+        if (!active) return;
+        if (result.success && result.user) {
+          setUser(result.user);
+          setProfileDebug(result.profileDebug || result.user.profileDebug || null);
+          localStorage.setItem('safedeal_user', JSON.stringify(result.user));
+        } else if (!result.success) {
+          console.error('Dashboard profile refetch failed:', result.error);
+          setProfileDebug((current) => ({
+            ...(current || { isAdmin: false }),
+            authId: user.id,
+            authEmail: user.email,
+            fetchError: result.error instanceof Error ? result.error.message : String(result.error || 'Profile refetch failed'),
+          }));
+        }
+      })
+      .catch((error) => {
+        if (!active) return;
+        console.error('Dashboard profile refetch crashed:', error);
+        setProfileDebug((current) => ({
+          ...(current || { isAdmin: false }),
+          authId: user.id,
+          authEmail: user.email,
+          fetchError: error instanceof Error ? error.message : String(error),
+        }));
+      })
+      .finally(() => {
+        if (active) setProfileRoleLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
   }, [currentRoute, isLoggedIn, user?.id]);
 
   // Save states modifications to local storage
@@ -336,6 +392,7 @@ export default function App() {
 
   const loginUser = (profile: UserProfile) => {
     setUser(profile);
+    setProfileDebug(profile.profileDebug || null);
     setIsLoggedIn(true);
     localStorage.setItem('safedeal_user', JSON.stringify(profile));
     if (isSupabaseConfigured) {
@@ -343,17 +400,31 @@ export default function App() {
       void KredoAuth.refreshCurrentProfile().then((result) => {
         if (result.success && result.user) {
           setUser(result.user);
+          setProfileDebug(result.profileDebug || result.user.profileDebug || null);
           localStorage.setItem('safedeal_user', JSON.stringify(result.user));
           setProfileRoleLoading(false);
         } else if (!result.success) {
           console.error('Profile refresh after login failed:', result.error);
+          setProfileDebug((current) => ({
+            ...(current || { isAdmin: false }),
+            authId: profile.id,
+            authEmail: profile.email,
+            fetchError: result.error instanceof Error ? result.error.message : String(result.error || 'Profile refresh failed'),
+          }));
           window.setTimeout(() => {
             void KredoAuth.refreshCurrentProfile().then((retry) => {
               if (retry.success && retry.user) {
                 setUser(retry.user);
+                setProfileDebug(retry.profileDebug || retry.user.profileDebug || null);
                 localStorage.setItem('safedeal_user', JSON.stringify(retry.user));
               } else if (!retry.success) {
                 console.error('Profile refresh retry after login failed:', retry.error);
+                setProfileDebug((current) => ({
+                  ...(current || { isAdmin: false }),
+                  authId: profile.id,
+                  authEmail: profile.email,
+                  fetchError: retry.error instanceof Error ? retry.error.message : String(retry.error || 'Profile refresh retry failed'),
+                }));
               }
               setProfileRoleLoading(false);
             });
@@ -370,6 +441,7 @@ export default function App() {
     void KredoAuth.signOut();
     setUser(null);
     setIsLoggedIn(false);
+    setProfileDebug(null);
     setProfileRoleLoading(false);
     localStorage.removeItem('safedeal_user');
     setRoute('home');
@@ -878,6 +950,7 @@ export default function App() {
             theme={theme}
             lang={lang}
             profileRoleLoading={profileRoleLoading}
+            profileDebug={profileDebug || user.profileDebug || null}
         >
           <Suspense fallback={pageFallback}>
             {renderPageContent()}

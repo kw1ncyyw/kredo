@@ -9,7 +9,8 @@ import {
   ShieldAlert,
   User,
 } from 'lucide-react';
-import { AppTheme, Language, RoutePath, SystemNotification, UserProfile } from '../types';
+import { AppTheme, Language, ProfileDebugInfo, RoutePath, SystemNotification, UserProfile } from '../types';
+import { isAdminProfileRole } from '../supabase';
 
 interface AccountLayoutProps {
   children: React.ReactNode;
@@ -20,6 +21,7 @@ interface AccountLayoutProps {
   theme: AppTheme;
   lang: Language;
   profileRoleLoading?: boolean;
+  profileDebug?: ProfileDebugInfo | null;
 }
 
 export default function AccountLayout({
@@ -31,7 +33,9 @@ export default function AccountLayout({
   theme,
   lang,
   profileRoleLoading = false,
+  profileDebug = null,
 }: AccountLayoutProps) {
+  const isAdmin = isAdminProfileRole(user.role);
   const unreadCount = useMemo(
     () => notifications.reduce((count, notification) => count + (notification.read ? 0 : 1), 0),
     [notifications],
@@ -82,11 +86,11 @@ export default function AccountLayout({
     { route: 'verification' as RoutePath, label: labels.verification, icon: Shield },
     { route: 'notifications' as RoutePath, label: labels.notifications, icon: Bell, badge: unreadCount },
     { route: 'profile' as RoutePath, label: labels.profile, icon: User },
-    ...(user.role === 'admin'
+    ...(isAdmin
       ? [{ route: 'admin' as RoutePath, label: labels.admin, icon: ShieldAlert }]
       : []),
     { route: 'settings' as RoutePath, label: labels.settings, icon: Settings },
-  ], [labels, unreadCount, user.role]);
+  ], [isAdmin, labels, unreadCount]);
   const statusLabels = {
     ua: {
       'Not Started': 'Не розпочато',
@@ -190,6 +194,42 @@ export default function AccountLayout({
             )}
           </nav>
         </header>
+
+        {profileDebug && (
+          <section className={`mt-4 rounded-[1.5rem] border p-4 text-xs shadow-sm ${
+            theme === 'dark'
+              ? 'border-amber-400/20 bg-amber-400/[0.06] text-amber-100'
+              : 'border-amber-200 bg-amber-50 text-amber-950'
+          }`}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm font-black">Debug auth/profile</p>
+              <span className={`rounded-full px-3 py-1 font-bold ${
+                profileDebug.isAdmin
+                  ? 'bg-emerald-500/15 text-emerald-600'
+                  : 'bg-stone-500/10 text-stone-500'
+              }`}>
+                isAdmin: {String(profileDebug.isAdmin)}
+              </span>
+            </div>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ['Auth ID', profileDebug.authId || user.id || '—'],
+                ['Auth email', profileDebug.authEmail || user.email || '—'],
+                ['Profile ID', profileDebug.profileId || '—'],
+                ['Profile email', profileDebug.profileEmail || '—'],
+                ['Profile role', profileDebug.profileRole || user.role || '—'],
+                ['Fetch error', profileDebug.fetchError || '—'],
+              ].map(([label, value]) => (
+                <div key={label} className={`rounded-2xl border px-3 py-2 ${
+                  theme === 'dark' ? 'border-white/10 bg-black/20' : 'border-amber-200/70 bg-white/70'
+                }`}>
+                  <p className="font-black uppercase tracking-[0.14em] opacity-60">{label}</p>
+                  <p className="mt-1 break-all font-bold">{value}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
 
         <main id="app-main-view" className="account-content animate-fade-in py-6 sm:py-8">
           {children}
