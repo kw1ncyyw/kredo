@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { RoutePath, Language, AppTheme, EscrowDeal, DealStatus, DealRole } from '../types';
 import { i18nDict } from '../messages';
 import { Search, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, XCircle, Landmark, PlusCircle, ShieldCheck } from 'lucide-react';
+import { PaymentSummaryCard } from './PaymentMethods';
 
 interface TransactionsProps {
   deals: EscrowDeal[];
@@ -92,10 +93,6 @@ export default function Transactions({
   };
 
   // Dispatch Action triggers
-  const executePay = (dealId: string) => {
-    updateDealStatus(dealId, 'funded', `Transaction Funded. Escrow of ${formatMoney(activeDeal?.amount || 0)} secured in KREDO transit vault.`);
-  };
-
   const executeDeliver = (dealId: string) => {
     updateDealStatus(dealId, 'delivered', 'Seller marked the deal of service as DELIVERED. Buyer inspection phase is now active.');
   };
@@ -386,6 +383,13 @@ export default function Transactions({
                   </div>
 
                   {/* ACTION CONTROLS TRANSITION NODES */}
+                  <PaymentSummaryCard
+                    lang={lang}
+                    theme={theme}
+                    amount={activeDeal.amount}
+                    currency={activeDeal.currency}
+                  />
+
                   <div className={`p-5 rounded-2xl border text-center relative overflow-hidden flex flex-col justify-center items-center ${
                     theme === 'dark' ? 'bg-stone-900/15 border-stone-900/60' : 'bg-stone-50 border-stone-200'
                   }`}>
@@ -404,12 +408,16 @@ export default function Transactions({
                             </p>
                             <button
                               id="btn-pay-escrow"
-                              onClick={() => executePay(activeDeal.id)}
-                              className="w-full py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs uppercase tracking-wider rounded-xl transition-all shadow-md active:scale-95 flex items-center justify-center space-x-2"
+                              type="button"
+                              disabled
+                              className="flex w-full cursor-not-allowed items-center justify-center space-x-2 rounded-xl bg-stone-500/10 py-3 text-xs font-bold uppercase tracking-wider text-stone-500"
                             >
                               <Landmark className="h-4 w-4" />
                               <span>{t.deals.actionPay}</span>
                             </button>
+                            <p className="rounded-xl border border-amber-500/15 bg-amber-500/[0.06] px-3 py-2 text-[11px] font-semibold leading-5 text-stone-500">
+                              {i18nDict[lang].payments.paymentUnavailable}
+                            </p>
                           </>
                         ) : (
                           <div className="p-4 rounded-xl border border-dashed border-stone-300 text-xs text-stone-500 text-center">

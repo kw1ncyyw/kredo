@@ -6,7 +6,7 @@
 import React from 'react';
 import { Language, AppTheme } from '../types';
 import { i18nDict } from '../messages';
-import { PenTool, DollarSign, PackageCheck, KeyRound } from 'lucide-react';
+import { PenTool, DollarSign, UserPlus, ShieldCheck, CheckCircle2 } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface HowItWorksProps {
@@ -34,13 +34,19 @@ export default function HowItWorks({ lang, theme }: HowItWorksProps) {
       num: '03',
       title: t.how.step3Title,
       desc: t.how.step3Desc,
-      icon: PackageCheck,
+      icon: UserPlus,
     },
     {
       num: '04',
       title: t.how.step4Title,
       desc: t.how.step4Desc,
-      icon: KeyRound,
+      icon: ShieldCheck,
+    },
+    {
+      num: '05',
+      title: t.how.step5Title,
+      desc: t.how.step5Desc,
+      icon: CheckCircle2,
     },
   ];
 
@@ -99,7 +105,7 @@ export default function HowItWorks({ lang, theme }: HowItWorksProps) {
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: '-100px' }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 relative"
+          className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-6 relative"
         >
           {/* Timeline Connector Line */}
           <div className={`hidden lg:block absolute top-[68px] left-[15%] right-[15%] h-px z-0 ${

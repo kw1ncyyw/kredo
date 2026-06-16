@@ -13,6 +13,7 @@ export type RoutePath =
   | 'security'
   | 'solutions'
   | 'pricing'
+  | 'payments'
   | 'faq'
   | 'contact'
   | 'login'

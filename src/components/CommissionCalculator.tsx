@@ -46,7 +46,7 @@ export default function CommissionCalculator({ lang, theme, onInitiateDeal }: Co
       buyerWillPay: 'Покупець сплачує:',
       sellerWillGet: 'Продавець отримає на рахунок:',
       ctaBtn: 'Ініціювати ескроу-угоду',
-      trustedNote: 'Кошти зберігатимуться на зашифрованому ескроу-рахунку KREDO до підтвердження умов.',
+      trustedNote: 'Оплата здійснюватиметься через підключеного платіжного партнера після активації інтеграції.',
       assets: {
         vehicle: 'Автомобіль / Транспорт',
         apartment: 'Нерухомість / Квартира',
@@ -72,7 +72,7 @@ export default function CommissionCalculator({ lang, theme, onInitiateDeal }: Co
       buyerWillPay: 'Buyer pays in total:',
       sellerWillGet: 'Seller receives in total:',
       ctaBtn: 'Initiate Escrow Deal',
-      trustedNote: 'Funds are securely held in KREDO transit escrow account until conditions are met.',
+      trustedNote: 'Payment will be processed through a connected payment partner after integration is activated.',
       assets: {
         vehicle: 'Vehicle / Automotive',
         apartment: 'Apartments / Real Estate',
@@ -98,7 +98,7 @@ export default function CommissionCalculator({ lang, theme, onInitiateDeal }: Co
       buyerWillPay: 'Покупатель оплачивает:',
       sellerWillGet: 'Продавец получит на счет:',
       ctaBtn: 'Запустить безопасную сделку',
-      trustedNote: 'Средства будут надежно заблокированы на защищенном эскроу-счете KREDO до выполнения условий.',
+      trustedNote: 'Оплата будет обрабатываться через подключенного платежного партнера после активации интеграции.',
       assets: {
         vehicle: 'Автомобиль / Транспорт',
         apartment: 'Недвижимость / Квартира',

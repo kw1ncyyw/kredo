@@ -32,6 +32,9 @@ import CookieConsent from './components/CookieConsent';
 import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import DisputesPage from './components/DisputesPage';
+import PaymentsPage from './components/PaymentsPage';
+import { MarketplacePlatformsSection, PaymentHomeSection, PaymentMethodsShowcase } from './components/PaymentMethods';
+import { i18nDict } from './messages';
 import { KredoAuth, KredoData, isSupabaseConfigured, supabase } from './supabase';
 
 const Transactions = lazy(() => import('./components/Transactions'));
@@ -100,7 +103,7 @@ export default function App() {
       if (parts[1]) {
         const routeCand = parts[1].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
+          'home', 'security', 'solutions', 'pricing', 'payments', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -110,7 +113,7 @@ export default function App() {
       } else if (parts[0] && parts[0] !== 'en' && parts[0] !== 'ua' && parts[0] !== 'ru') {
         const routeCand = parts[0].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
+          'home', 'security', 'solutions', 'pricing', 'payments', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -166,7 +169,7 @@ export default function App() {
       if (parts[1]) {
         const routeCand = parts[1].toLowerCase();
         const validRoutes: RoutePath[] = [
-          'home', 'security', 'solutions', 'pricing', 'faq', 'contact', 'reset-password',
+          'home', 'security', 'solutions', 'pricing', 'payments', 'faq', 'contact', 'reset-password',
           'login', 'register', 'dashboard', 'create-deal', 'transactions', 'profile',
           'notifications', 'settings', 'about', 'business-info', 'verification', 'terms', 'privacy', 'disputes', 'admin'
         ];
@@ -512,9 +515,10 @@ export default function App() {
         return (
           <>
             <Hero setRoute={setRoute} lang={lang} theme={theme} isLoggedIn={isLoggedIn} />
-            
-            {/* Embedded Calculator overlapping bottom hero */}
-            <div className="relative z-20 -mt-16 pb-12">
+
+            <HowItWorks lang={lang} theme={theme} />
+
+            <div id="pricing" className={`relative z-20 py-14 ${theme === 'dark' ? 'bg-[#080808]' : 'bg-white'}`}>
               <CommissionCalculator 
                 lang={lang} 
                 theme={theme} 
@@ -524,8 +528,16 @@ export default function App() {
               />
             </div>
 
-            <HowItWorks lang={lang} theme={theme} />
+            <PaymentHomeSection lang={lang} theme={theme} setRoute={setRoute} />
+
+            <section className={`px-4 py-10 sm:px-6 lg:px-8 ${theme === 'dark' ? 'bg-[#080808]' : 'bg-white'}`}>
+              <div className="mx-auto max-w-6xl">
+                <MarketplacePlatformsSection lang={lang} theme={theme} />
+              </div>
+            </section>
+
             <FAQAccordion lang={lang} theme={theme} />
+            <CTABanner setRoute={setRoute} lang={lang} theme={theme} isLoggedIn={isLoggedIn} />
           </>
         );
       case 'how-it-works':
@@ -591,6 +603,20 @@ export default function App() {
               />
             </div>
 
+            <div className="mx-auto mb-10 max-w-5xl px-4">
+              <PaymentMethodsShowcase lang={lang} theme={theme} compact />
+              <div className={`mt-4 rounded-2xl border px-5 py-4 text-sm font-semibold leading-6 ${
+                theme === 'dark'
+                  ? 'border-white/[0.08] bg-white/[0.03] text-stone-300'
+                  : 'border-stone-200 bg-white text-stone-600 shadow-sm'
+              }`}>
+                <strong className={theme === 'dark' ? 'text-white' : 'text-stone-950'}>
+                  {i18nDict[lang].payments.pricingTitle}
+                </strong>
+                <span className="ml-2">{i18nDict[lang].payments.pricingText}</span>
+              </div>
+            </div>
+
             <div className="max-w-3xl mx-auto px-4 grid grid-cols-1 md:grid-cols-2 gap-6 pb-6">
               <div className={`p-6 rounded-xl border ${theme === 'dark' ? 'bg-stone-900/40 border-stone-850' : 'bg-white border-stone-200'}`}>
                 <h3 className={`font-extrabold text-xs uppercase text-emerald-500 tracking-wider mb-2.5`}>
@@ -611,6 +637,8 @@ export default function App() {
             </div>
           </div>
         );
+      case 'payments':
+        return <PaymentsPage lang={lang} theme={theme} />;
       case 'faq':
         return (
           <div className="pt-24 pb-16">
@@ -713,26 +741,14 @@ export default function App() {
         );
       case 'admin':
         return isLoggedIn && user ? (
-          isSupabaseConfigured && user.role === 'admin' ? (
-            <AdminPanel
-              user={user}
-              lang={lang}
-              theme={theme}
-              setRoute={setRoute}
-              updateProfile={updateProfile}
-              notifications={notifications}
-            />
-          ) : (
-            <DashboardSettings
-              user={user}
-              deals={deals}
-              notifications={notifications}
-              setRoute={setRoute}
-              lang={lang}
-              theme={theme}
-              setSelectedDealId={setSelectedDealId}
-            />
-          )
+          <AdminPanel
+            user={user}
+            lang={lang}
+            theme={theme}
+            setRoute={setRoute}
+            updateProfile={updateProfile}
+            notifications={notifications}
+          />
         ) : (
           <LoginRegister setRoute={setRoute} lang={lang} theme={theme} loginUser={loginUser} isLoggedIn={isLoggedIn} />
         );
@@ -779,8 +795,7 @@ export default function App() {
     'notifications',
     'profile',
     'security',
-    'settings',
-    'admin'
+    'settings'
   ].includes(currentRoute);
 
   const protectedRoutes: RoutePath[] = [
@@ -815,6 +830,28 @@ export default function App() {
     return (
       <div className={`min-h-screen pt-24 ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'}`}>
         {pageFallback}
+      </div>
+    );
+  }
+
+  if (currentRoute === 'admin' && isLoggedIn && user) {
+    return (
+      <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'} transition-all duration-300 font-sans`}>
+        <Navbar
+          currentRoute={currentRoute}
+          setRoute={setRoute}
+          lang={lang}
+          setLang={setLang}
+          theme={theme}
+          toggleTheme={toggleTheme}
+          isLoggedIn={isLoggedIn}
+          logout={logout}
+          setLanguageByPrefix={setLanguageByPrefix}
+        />
+        <Suspense fallback={pageFallback}>
+          {renderPageContent()}
+        </Suspense>
+        <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />
       </div>
     );
   }

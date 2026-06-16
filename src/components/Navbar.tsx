@@ -78,9 +78,10 @@ export default function Navbar({
   const navItems: Array<{ label: string; action: RoutePath; isPublicSection: boolean }> = [
     { label: t.nav.home, action: 'home', isPublicSection: true },
     { label: t.nav.howItWorks, action: 'how-it-works', isPublicSection: true },
-    { label: t.nav.security, action: 'security', isPublicSection: true },
     { label: t.nav.solutions, action: 'solutions', isPublicSection: true },
     { label: t.nav.pricing, action: 'pricing', isPublicSection: true },
+    { label: t.nav.payments, action: 'payments', isPublicSection: true },
+    { label: t.nav.security, action: 'security', isPublicSection: true },
     { label: t.nav.faq, action: 'faq', isPublicSection: true },
     { label: t.nav.contact, action: 'contact', isPublicSection: true },
   ];
@@ -165,7 +166,7 @@ export default function Navbar({
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex items-center space-x-2">
+          <div className="hidden lg:flex items-center space-x-1">
             {navItems.map((item, idx) => {
               const isActive = currentRoute === item.action;
               return (
@@ -176,7 +177,7 @@ export default function Navbar({
                   transition={{ duration: 0.6, delay: 0.1 + idx * 0.05, ease: [0.16, 1, 0.3, 1] }}
                   id={`nav-item-${item.action}`}
                   onClick={() => handleNavClick(item.action, true)}
-                  className={`px-3.5 py-2 rounded-xl text-xs font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
+                  className={`px-2.5 xl:px-3 py-2 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all duration-200 cursor-pointer ${
                     isActive
                       ? theme === 'dark'
                         ? 'bg-white/10 text-white shadow-sm'
@@ -197,7 +198,7 @@ export default function Navbar({
             initial={{ opacity: 0, y: -15 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.4, ease: 'easeOut' }}
-            className="hidden md:flex items-center space-x-3"
+            className="hidden lg:flex items-center space-x-3"
           >
             {/* Theme Toggle */}
             <button
@@ -395,7 +396,7 @@ export default function Navbar({
           </motion.div>
 
           {/* Mobile Hamburguer button */}
-          <div className="flex md:hidden items-center space-x-2">
+          <div className="flex lg:hidden items-center space-x-2">
             <button
               onClick={toggleTheme}
               className={`p-2 rounded-lg transition-all duration-200 ${
@@ -429,7 +430,7 @@ export default function Navbar({
             animate={{ opacity: 1, height: 'auto' }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.25 }}
-            className={`relative z-[55] md:hidden border-t overflow-hidden ${
+            className={`relative z-[55] lg:hidden border-t overflow-hidden ${
               theme === 'dark' ? 'bg-[#080808] border-stone-900' : 'bg-white border-stone-200'
             }`}
           >

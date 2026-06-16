@@ -85,7 +85,7 @@ export default function VerificationKYC({
     },
     en: {
       title: 'Verification Center (KYC)',
-      subtitle: 'Validate your identity as part of our secure financial custody compliance standards.',
+      subtitle: 'Validate your identity as part of our secure deal review standards.',
       statusTitle: 'Current Compliance Status:',
       statusNotStarted: 'Not Started',
       statusPending: 'Pending Review',
@@ -169,7 +169,7 @@ export default function VerificationKYC({
     },
   }[lang] || {
     title: 'Verification Center (KYC)',
-    subtitle: 'Validate your identity as part of our secure financial custody compliance standards.',
+    subtitle: 'Validate your identity as part of our secure deal review standards.',
     statusTitle: 'Current Compliance Status:',
     statusNotStarted: 'Not Started',
     statusPending: 'Pending Review by Legal Department',

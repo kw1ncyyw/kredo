@@ -8,6 +8,8 @@ import { RoutePath, Language, AppTheme, UserProfile } from '../types';
 import { i18nDict } from '../messages';
 import { ShieldCheck, FileText, Camera, Upload, CheckCircle2, ChevronRight, AlertCircle, Mail, Phone, Building2, UserRound, BadgeCheck, CalendarDays, Pencil } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import PhoneNumberInput from './PhoneNumberInput';
+import { isValidNationalPhone, normalizeInternationalPhone, parseInternationalPhone, PHONE_COUNTRIES } from '../phoneCountries';
 
 interface UserProfileProps {
   user: UserProfile;
@@ -58,6 +60,7 @@ export default function UserProfileSettings({
       organizationCard: 'Організація',
       createdDate: 'Дата створення',
       editDetails: 'Редагувати дані',
+      phoneInvalid: 'Введіть коректний номер телефону',
     },
     en: {
       subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -88,6 +91,7 @@ export default function UserProfileSettings({
       organizationCard: 'Organization',
       createdDate: 'Created date',
       editDetails: 'Edit details',
+      phoneInvalid: 'Enter a valid phone number',
     },
     ru: {
       subtitle: 'Обновляйте ваши реквизиты для корректного формирования эскроу-соглашений и квитанций.',
@@ -118,6 +122,7 @@ export default function UserProfileSettings({
       organizationCard: 'Организация',
       createdDate: 'Дата создания',
       editDetails: 'Редактировать данные',
+      phoneInvalid: 'Введите корректный номер телефона',
     }
   }[lang] || {
     subtitle: 'Keep your business details accurate for automated escrows and receipts.',
@@ -148,13 +153,16 @@ export default function UserProfileSettings({
     organizationCard: 'Organization',
     createdDate: 'Created date',
     editDetails: 'Edit details',
+    phoneInvalid: 'Enter a valid phone number',
   };
 
   // Form states
+  const initialPhone = parseInternationalPhone(user.phone, PHONE_COUNTRIES.find((item) => item.name === user.country) || PHONE_COUNTRIES[0]);
   const [fullName, setFullName] = useState(user.fullName);
-  const [phone, setPhone] = useState(user.phone);
+  const [phone, setPhone] = useState(initialPhone.national);
   const [companyName, setCompanyName] = useState(user.companyName || '');
-  const [country, setCountry] = useState(user.country || 'Ukraine');
+  const [country, setCountry] = useState(initialPhone.country.name || user.country || 'Ukraine');
+  const [phoneError, setPhoneError] = useState('');
 
   // Interactive KYC progress
   const [kycProgress, setKycProgress] = useState(false);
@@ -165,9 +173,15 @@ export default function UserProfileSettings({
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
+    const currentCountry = PHONE_COUNTRIES.find((item) => item.name === country) || PHONE_COUNTRIES[0];
+    if (!isValidNationalPhone(currentCountry, phone)) {
+      setPhoneError(kycLoc.phoneInvalid);
+      return;
+    }
+    const cleanedPhone = normalizeInternationalPhone(currentCountry, phone);
     updateProfile({
       fullName,
-      phone,
+      phone: cleanedPhone,
       companyName,
       country,
     });
@@ -271,21 +285,19 @@ export default function UserProfileSettings({
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold uppercase tracking-wider mb-1.5 text-stone-500">
-                {t.profile.phone}
-              </label>
-              <input
-                type="text"
-                required
-                disabled={!editing}
-                id="profile-phone"
+              <PhoneNumberInput
+                lang={lang}
+                theme={theme}
+                label={t.profile.phone}
                 value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className={`w-full text-xs font-semibold px-4 py-3 rounded-xl border transition-all ${
-                  theme === 'dark'
-                    ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
-                    : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-950'
-                }`}
+                countryName={country}
+                disabled={!editing}
+                error={phoneError}
+                onChange={({ country: nextCountry, national }) => {
+                  setCountry(nextCountry.name);
+                  setPhone(national);
+                  setPhoneError('');
+                }}
               />
             </div>
 

@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { RoutePath, Language, AppTheme, EscrowDeal, DealRole } from '../types';
 import { i18nDict } from '../messages';
 import { Sparkles, HelpCircle, AlertCircle, CheckCircle, ArrowRightLeft, PackageCheck, FileSignature, WalletCards } from 'lucide-react';
+import { PaymentSummaryCard } from './PaymentMethods';
 
 interface CreateDealFormProps {
   lang: Language;
@@ -18,7 +19,7 @@ interface CreateDealFormProps {
 const formT = {
   ua: {
     requiredParams: 'Будь ласка, заповніть усі необхідні поля.',
-    sysMsgCreated: (amountStr: string) => `Створено захищену ескроу-угоду. Очікується депозит у розмірі ${amountStr} від Покупця.`,
+    sysMsgCreated: (amountStr: string) => `Створено захищену угоду. Очікується платіжний статус для суми ${amountStr} від Покупця через підключеного партнера.`,
     categories: ['Цифрові товари', 'Фріланс', 'Домени', 'Транспортні засоби', 'Послуги', 'Інша комерція'],
     whoPaysFee: 'Хто сплачує комісію KREDO?',
     half: 'Поділено 50/50 (Рекомендовано)',
@@ -46,7 +47,7 @@ const formT = {
   },
   en: {
     requiredParams: 'Please fill out all required parameters.',
-    sysMsgCreated: (amountStr: string) => `Secured escrow agreement formed. Awaiting deposit of ${amountStr} from the Buyer.`,
+    sysMsgCreated: (amountStr: string) => `Secured agreement formed. Awaiting payment status for ${amountStr} from the Buyer through a connected partner.`,
     categories: ['Digital products', 'Freelance', 'Domains', 'Vehicles', 'Services', 'E-commerce'],
     whoPaysFee: 'Who Pays KREDO Fee?',
     half: 'Divided 50/50 (Recommended)',
@@ -74,7 +75,7 @@ const formT = {
   },
   ru: {
     requiredParams: 'Пожалуйста, заполните все обязательные поля.',
-    sysMsgCreated: (amountStr: string) => `Создана защищенная эскроу-сделка. Ожидается депозит в размере ${amountStr} от Покупателя.`,
+    sysMsgCreated: (amountStr: string) => `Создана защищенная сделка. Ожидается платежный статус для суммы ${amountStr} от Покупателя через подключенного партнера.`,
     categories: ['Цифровые товары', 'Фриланс', 'Домены', 'Транспорт', 'Услуги', 'Другая коммерция'],
     whoPaysFee: 'Кто оплачивает комиссию KREDO?',
     half: 'Разделено 50/50 (Рекомендовано)',
@@ -583,6 +584,13 @@ export default function CreateDealForm({
 
               </div>
             </div>
+
+            <PaymentSummaryCard
+              lang={lang}
+              theme={theme}
+              amount={numericAmount}
+              currency={currency}
+            />
 
             {/* Arbitration Disclosure */}
             <div className={`p-4 rounded-xl text-[11px] leading-relaxed flex items-start space-x-3 border shadow-sm ${

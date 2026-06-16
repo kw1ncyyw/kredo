@@ -6,10 +6,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RoutePath, Language, AppTheme, UserProfile } from '../types';
 import { i18nDict } from '../messages';
-import { ShieldAlert, Key, Mail, User, Phone, CheckCircle, Globe, RefreshCw, Lock, LayoutDashboard, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { ShieldAlert, Key, Mail, User, CheckCircle, RefreshCw, Lock, LayoutDashboard, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { KredoAuth } from '../supabase';
-import { formatNationalPhone, PHONE_COUNTRIES } from '../phoneCountries';
+import { isValidNationalPhone, normalizeInternationalPhone, PHONE_COUNTRIES } from '../phoneCountries';
+import PhoneNumberInput from './PhoneNumberInput';
 
 interface LoginRegisterProps {
   setRoute: (route: RoutePath) => void;
@@ -57,16 +58,12 @@ export default function LoginRegister({
   const [mfaCode, setMfaCode] = useState('');
   const emailOtpIsValid = verificationCode.length === 6 || verificationCode.length === 8;
   const selectedPhoneCountry = PHONE_COUNTRIES.find((item) => item.name === country) || PHONE_COUNTRIES[0];
-  const countryDisplayNames = new Intl.DisplayNames(
-    [lang === 'ua' ? 'uk' : lang],
-    { type: 'region' },
-  );
-  const phoneDigits = phoneNational.replace(/\D/g, '');
-  const fullPhoneNumber = `${selectedPhoneCountry.dialCode}${phoneDigits}`;
+  const fullPhoneNumber = normalizeInternationalPhone(selectedPhoneCountry, phoneNational);
 
   // CAPTCHA states
   const [captchaCode, setCaptchaCode] = useState('');
   const [captchaInput, setCaptchaInput] = useState('');
+  const [captchaLoadError, setCaptchaLoadError] = useState(false);
 
   // Error & Status states
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
@@ -149,13 +146,21 @@ export default function LoginRegister({
 
   // Generate a random CAPTCHA code
   const generateCaptcha = () => {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // eye-friendly letters
-    let result = '';
-    for (let i = 0; i < 4; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
+    try {
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // eye-friendly letters
+      let result = '';
+      for (let i = 0; i < 4; i++) {
+        result += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      setCaptchaCode(result);
+      setCaptchaInput('');
+      setCaptchaLoadError(false);
+    } catch (error) {
+      console.error('Captcha generation failed:', error);
+      setCaptchaCode('');
+      setCaptchaInput('');
+      setCaptchaLoadError(true);
     }
-    setCaptchaCode(result);
-    setCaptchaInput('');
   };
 
   useEffect(() => {
@@ -201,6 +206,8 @@ export default function LoginRegister({
       // CAPTCHA verification
       if (!captchaInput) {
         tempErrors.captcha = t.auth.requiredError;
+      } else if (captchaLoadError || !captchaCode) {
+        tempErrors.captcha = tr.captchaLoadError;
       } else if (captchaInput.toUpperCase() !== captchaCode) {
         tempErrors.captcha = tr.incorrectCaptcha;
       }
@@ -217,10 +224,7 @@ export default function LoginRegister({
         tempErrors.fullName = t.auth.requiredError;
       }
 
-      if (
-        phoneDigits.length < selectedPhoneCountry.minDigits
-        || phoneDigits.length > selectedPhoneCountry.maxDigits
-      ) {
+      if (!isValidNationalPhone(selectedPhoneCountry, phoneNational)) {
         tempErrors.phone = tr.phoneInvalidError;
       }
     }
@@ -517,63 +521,20 @@ export default function LoginRegister({
             )}
 
             {viewState === 'register' && (
-              <div>
-                <label className={`block text-[11px] font-bold uppercase tracking-wider mb-1.5 ${
-                  theme === 'dark' ? 'text-stone-500' : 'text-stone-400'
-                }`}>
-                  {t.auth.phoneLabel}
-                </label>
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-[minmax(9rem,1fr)_minmax(0,1.25fr)]">
-                  <div className="relative">
-                    <Globe className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500 pointer-events-none" />
-                    <select
-                      value={country}
-                      onChange={(e) => {
-                        setCountry(e.target.value);
-                        setErrors((current) => ({ ...current, phone: '' }));
-                      }}
-                      disabled={loading}
-                      aria-label={tr.countryCodeLabel}
-                      className={`w-full appearance-none rounded-xl border py-3 pl-9 pr-2 text-xs font-semibold ${
-                        theme === 'dark'
-                          ? 'bg-stone-950 border-stone-900 text-white'
-                          : 'bg-stone-50 border-stone-200 text-stone-900'
-                      }`}
-                    >
-                      {PHONE_COUNTRIES.map((item) => (
-                        <option key={item.iso} value={item.name}>
-                          {countryDisplayNames.of(item.iso) || item.name} ({item.iso}) {item.dialCode}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-stone-500" />
-                    <input
-                      type="tel"
-                      required
-                      inputMode="tel"
-                      autoComplete="tel-national"
-                      value={phoneNational}
-                      onChange={(e) => {
-                        setPhoneNational(formatNationalPhone(e.target.value));
-                        setErrors((current) => ({ ...current, phone: '' }));
-                      }}
-                      placeholder={tr.phonePlaceholder}
-                      disabled={loading}
-                      className={`w-full text-xs font-semibold pl-10 pr-4 py-3 rounded-xl border transition-all ${
-                        theme === 'dark'
-                          ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
-                          : 'bg-stone-50 border-stone-200 text-stone-900 focus:border-stone-900'
-                      } ${errors.phone ? 'border-red-500 focus:border-red-500' : ''}`}
-                    />
-                  </div>
-                </div>
-                <p className="mt-1.5 text-[10px] font-semibold text-stone-500">
-                  {countryDisplayNames.of(selectedPhoneCountry.iso) || selectedPhoneCountry.name} {selectedPhoneCountry.dialCode}
-                </p>
-                {errors.phone && <p className="mt-1 text-[10px] font-semibold text-red-500">{errors.phone}</p>}
-              </div>
+              <PhoneNumberInput
+                lang={lang}
+                theme={theme}
+                label={t.auth.phoneLabel}
+                value={phoneNational}
+                countryName={country}
+                disabled={loading}
+                error={errors.phone}
+                onChange={({ country: nextCountry, national }) => {
+                  setCountry(nextCountry.name);
+                  setPhoneNational(national);
+                  setErrors((current) => ({ ...current, phone: '' }));
+                }}
+              />
             )}
 
             {/* Password Field (Login & Register only) */}
@@ -672,10 +633,10 @@ export default function LoginRegister({
 
             {/* CAPTCHA section (Login & Register) */}
             {(viewState === 'login' || viewState === 'register') && (
-              <div className={`p-4 rounded-2xl border ${
+              <div className={`relative z-0 min-h-36 overflow-visible rounded-2xl border p-4 ${
                 theme === 'dark' ? 'bg-stone-950 border-stone-900' : 'bg-stone-50 border-stone-200'
               }`}>
-                <div className="flex items-center justify-between mb-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
                   <span className={`text-[11px] font-bold uppercase tracking-wider ${
                     theme === 'dark' ? 'text-stone-500' : 'text-stone-400'
                   }`}>
@@ -684,17 +645,34 @@ export default function LoginRegister({
                   <button
                     type="button"
                     onClick={generateCaptcha}
-                    className={`p-1.5 rounded-lg border transition-all hover:rotate-180 duration-500 ${
+                    className={`flex min-h-10 min-w-10 items-center justify-center rounded-lg border transition-all duration-300 hover:rotate-180 ${
                       theme === 'dark' ? 'border-stone-900 hover:bg-white/5 text-stone-400 hover:text-white' : 'border-stone-200 hover:bg-black/5 text-stone-600 hover:text-stone-950'
                     }`}
+                    aria-label={tr.resendCode}
                   >
                     <RefreshCw className="h-3 w-3" />
                   </button>
                 </div>
 
-                <div className="flex items-center space-x-3">
+                {captchaLoadError ? (
+                  <div className="rounded-xl border border-amber-500/20 bg-amber-500/[0.06] p-4 text-center">
+                    <p className="text-xs font-semibold leading-5 text-amber-600 dark:text-amber-300">
+                      {tr.captchaLoadError}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={generateCaptcha}
+                      className={`mt-3 inline-flex min-h-10 items-center justify-center rounded-xl px-4 text-xs font-bold ${
+                        theme === 'dark' ? 'bg-white text-black' : 'bg-stone-950 text-white'
+                      }`}
+                    >
+                      {tr.refreshCaptcha}
+                    </button>
+                  </div>
+                ) : (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-[7.5rem_minmax(0,1fr)] sm:items-center">
                   {/* Styled Monospace visual code */}
-                  <div className={`w-28 h-10 select-none rounded-xl font-mono text-lg font-black tracking-widest flex items-center justify-center border-2 border-dashed relative overflow-hidden ${
+                  <div className={`mx-auto flex h-14 w-full max-w-[11rem] select-none items-center justify-center overflow-hidden rounded-xl border-2 border-dashed font-mono text-xl font-black tracking-widest relative ${
                     theme === 'dark' 
                       ? 'bg-stone-900 border-stone-800 text-stone-300' 
                       : 'bg-stone-100 border-stone-300 text-stone-800'
@@ -709,15 +687,16 @@ export default function LoginRegister({
                     type="text"
                     placeholder={tr.enterCode}
                     value={captchaInput}
-                    onChange={(e) => setCaptchaInput(e.target.value)}
+                    onChange={(e) => setCaptchaInput(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4))}
                     disabled={loading}
-                    className={`flex-1 text-xs font-mono font-bold px-3 py-2.5 rounded-xl border transition-all ${
+                    className={`min-h-12 w-full text-center font-mono text-sm font-bold tracking-wider px-3 py-3 rounded-xl border transition-all ${
                       theme === 'dark'
                         ? 'bg-stone-950 border-stone-900 text-white focus:border-stone-500'
                         : 'bg-white border-stone-200 text-stone-900 focus:border-stone-900'
                     } ${errors.captcha ? 'border-red-500 focus:border-red-500' : ''}`}
                   />
                 </div>
+                )}
                 {errors.captcha && <p className="text-[10px] text-red-500 font-semibold mt-1">{errors.captcha}</p>}
               </div>
             )}

@@ -6,7 +6,8 @@
 import React from 'react';
 import { RoutePath, Language, AppTheme } from '../types';
 import { i18nDict } from '../messages';
-import { Shield, Mail } from 'lucide-react';
+import { Mail, Shield, WalletCards } from 'lucide-react';
+import { LogoStrip } from './PaymentMethods';
 
 interface FooterProps {
   currentRoute: RoutePath;
@@ -170,6 +171,14 @@ export default function Footer({ currentRoute, setRoute, lang, theme }: FooterPr
                   {t.nav.contact}
                 </button>
               </li>
+              <li>
+                <button
+                  onClick={() => handleLinkClick('payments')}
+                  className={`hover:transition-all ${theme === 'dark' ? 'hover:text-white' : 'hover:text-stone-900'}`}
+                >
+                  {t.payments.footerTitle}
+                </button>
+              </li>
               <li className="flex items-start space-x-2 text-xs">
                 <Mail className="h-3.5 w-3.5 shrink-0 mt-0.5" />
                 <a href="mailto:kredo.support.ua@gmail.com" className="font-mono hover:underline">kredo.support.ua@gmail.com</a>
@@ -177,6 +186,27 @@ export default function Footer({ currentRoute, setRoute, lang, theme }: FooterPr
             </ul>
           </div>
 
+        </div>
+
+        <div className={`mt-10 rounded-[1.5rem] border p-4 ${
+          theme === 'dark' ? 'border-white/[0.08] bg-white/[0.025]' : 'border-stone-200 bg-white/80 shadow-sm'
+        }`}>
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <span className={`flex h-10 w-10 items-center justify-center rounded-2xl ${
+                theme === 'dark' ? 'bg-emerald-400/10 text-emerald-300' : 'bg-emerald-50 text-emerald-700'
+              }`}>
+                <WalletCards className="h-5 w-5" />
+              </span>
+              <div>
+                <p className={`text-sm font-black ${theme === 'dark' ? 'text-white' : 'text-stone-950'}`}>
+                  {t.payments.footerTitle}
+                </p>
+                <p className="text-xs font-semibold text-stone-500">{t.payments.footerNote}</p>
+              </div>
+            </div>
+            <LogoStrip lang={lang} theme={theme} type="payments" />
+          </div>
         </div>
 
         <hr className={`my-8 ${theme === 'dark' ? 'border-stone-900' : 'border-stone-205 border-stone-200'}`} />

@@ -118,7 +118,7 @@ export default function SupportedIndustries({ lang, theme, hideHeader = false }:
                   <span className={`text-[10px] font-bold tracking-widest uppercase py-0.5 px-2 rounded-full ${
                     theme === 'dark' ? 'bg-stone-850 text-stone-500' : 'bg-stone-150 text-stone-500'
                   }`}>
-                    SECURE ESCROW
+                    {t.industries.badge}
                   </span>
                 </div>
 

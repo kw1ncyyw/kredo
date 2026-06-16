@@ -36,21 +36,21 @@ export default function CookieConsent({ lang, theme, setRoute }: CookieConsentPr
   const text = {
     ua: {
       title: 'Файли cookie та приватність',
-      desc: 'Ми використовуємо функціональні файли cookie для безпечної автентифікації, збереження налаштувань вашого інтерфейсу та захисту ескроу-рахунків.',
+      desc: 'Ми використовуємо необхідні cookie для входу, безпеки сесії та збереження налаштувань інтерфейсу.',
       btnAccept: 'Дозволити',
       btnDecline: 'Відхилити',
       btnMore: 'Дізнатися більше',
     },
     en: {
-      title: 'Cookies & Encryption',
-      desc: 'We utilize critical cookies to verify your identity, secure active session environments, and guarantee escrow safety.',
+      title: 'Cookies & privacy',
+      desc: 'We use essential cookies for login, session security, and interface preferences.',
       btnAccept: 'Accept',
       btnDecline: 'Decline',
       btnMore: 'Learn more',
     },
     ru: {
       title: 'Файлы cookie и конфиденциальность',
-      desc: 'Мы используем функциональные файлы cookie для безопасной аутентификации, сохранения ваших настроек и защиты эскроу-аккаунтов.',
+      desc: 'Мы используем необходимые cookie для входа, безопасности сессии и сохранения настроек интерфейса.',
       btnAccept: 'Разрешить',
       btnDecline: 'Отклонить',
       btnMore: 'Узнать больше',
