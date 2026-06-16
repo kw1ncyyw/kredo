@@ -280,12 +280,18 @@ async function ensureSupabaseProfile(authUser: AuthUserLike): Promise<{
     kyc_status: 'Not Started',
   };
   const phone = String(metadata.phone || '').trim();
+  const isDuplicateProfileError = (error: any) => (
+    error?.code === '23505'
+    || error?.message?.toLowerCase().includes('duplicate')
+    || error?.message?.toLowerCase().includes('already exists')
+  );
   const primary = await supabase
     .from('profiles')
-    .upsert({ ...baseProfile, phone }, { onConflict: 'id' });
+    .insert({ ...baseProfile, phone });
   if (!primary.error) return { success: true };
+  if (isDuplicateProfileError(primary.error)) return { success: true };
 
-  console.error('Supabase verified profile upsert failed:', primary.error);
+  console.error('Supabase verified profile insert failed:', primary.error);
   const missingPhoneColumn = (
     primary.error.code === 'PGRST204'
     || primary.error.message?.toLowerCase().includes('phone')
@@ -294,9 +300,10 @@ async function ensureSupabaseProfile(authUser: AuthUserLike): Promise<{
 
   const fallback = await supabase
     .from('profiles')
-    .upsert(baseProfile, { onConflict: 'id' });
+    .insert(baseProfile);
+  if (fallback.error && isDuplicateProfileError(fallback.error)) return { success: true };
   if (fallback.error) {
-    console.error('Supabase core profile upsert failed:', fallback.error);
+    console.error('Supabase core profile insert failed:', fallback.error);
     return { success: false, error: fallback.error };
   }
   return { success: true };
@@ -1135,11 +1142,8 @@ export const KredoData = {
       .update({ status: request.status, admin_notes: request.note, updated_at: new Date().toISOString() })
       .eq('id', request.id);
     if (requestError) return { success: false, error: requestError.message };
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .update({ kyc_status: request.status, kyc_notes: request.note })
-      .eq('id', request.userId);
-    if (profileError) return { success: false, error: profileError.message };
+    // profiles.kyc_status is synchronized by the database trigger on kyc_requests.
+    // Do not update protected profile fields directly from the frontend.
     const { error: notificationError } = await supabase.from('notifications').insert({
       user_id: request.userId,
       title: request.status === 'Verified' ? 'KYC verified' : 'KYC rejected',

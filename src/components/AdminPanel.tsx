@@ -37,7 +37,7 @@ type AdminUser = {
   id: string;
   email: string;
   fullName: string;
-  role: 'admin' | 'user';
+  role: NonNullable<UserProfile['role']>;
   kycStatus: string;
   emailVerified?: boolean;
   createdAt: string;
@@ -218,7 +218,6 @@ const copy = {
 };
 
 const fallbackUsers: AdminUser[] = [
-  { id: 'admin', email: 'admin@kredo.local', fullName: 'KREDO Admin', role: 'admin', kycStatus: 'Verified', emailVerified: true, createdAt: '2026-06-01' },
   { id: 'user-1', email: 'buyer@example.com', fullName: 'Demo Buyer', role: 'user', kycStatus: 'Pending Review', emailVerified: true, createdAt: '2026-06-08' },
   { id: 'user-2', email: 'seller@example.com', fullName: 'Demo Seller', role: 'user', kycStatus: 'Not Started', emailVerified: false, createdAt: '2026-06-10' },
 ];

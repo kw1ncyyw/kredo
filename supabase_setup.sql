@@ -74,25 +74,22 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 BEGIN
-  IF auth.role() = 'service_role' OR public.is_admin() THEN
+  IF auth.role() = 'service_role' THEN
     RETURN NEW;
   END IF;
   IF NEW.id IS DISTINCT FROM OLD.id
      OR NEW.email IS DISTINCT FROM OLD.email
      OR NEW.role IS DISTINCT FROM OLD.role
-     OR (
-       NEW.email_verified IS DISTINCT FROM OLD.email_verified
-       AND NOT (
-         COALESCE(OLD.email_verified, FALSE) = FALSE
-         AND NEW.email_verified = TRUE
-         AND auth.uid() = OLD.id
-         AND public.is_current_user_email_confirmed()
-       )
-     )
-     OR NEW.kyc_status IS DISTINCT FROM OLD.kyc_status
-     OR NEW.kyc_notes IS DISTINCT FROM OLD.kyc_notes
+     OR NEW.email_verified IS DISTINCT FROM OLD.email_verified
      OR NEW.created_at IS DISTINCT FROM OLD.created_at THEN
     RAISE EXCEPTION 'Users may update only safe profile fields';
+  END IF;
+  IF (
+       NEW.kyc_status IS DISTINCT FROM OLD.kyc_status
+       OR NEW.kyc_notes IS DISTINCT FROM OLD.kyc_notes
+     )
+     AND pg_trigger_depth() <= 1 THEN
+    RAISE EXCEPTION 'KYC status can be changed only through the KYC review workflow';
   END IF;
   RETURN NEW;
 END;
@@ -125,14 +122,20 @@ TO authenticated
 WITH CHECK (
   auth.uid() = id
   AND role = 'user'
+  AND email_verified = public.is_current_user_email_confirmed()
+  AND kyc_status = 'Not Started'
+  AND COALESCE(kyc_notes, '') = ''
 );
 
 DROP POLICY IF EXISTS "System/Admins can read all profiles" ON public.profiles;
 CREATE POLICY "System/Admins can read all profiles" 
-ON public.profiles FOR ALL 
+ON public.profiles FOR SELECT 
 TO authenticated 
-USING (public.is_admin())
-WITH CHECK (public.is_admin());
+USING (public.is_admin());
+
+-- Admin role assignment is intentionally not exposed through frontend RLS.
+-- Grant or revoke profiles.role = 'admin' only from the Supabase SQL Editor
+-- or a trusted backend using the service role key.
 
 -- Legacy helper retained for compatibility only.
 -- Profiles are finalized by the client after a successful signup OTP verification.
