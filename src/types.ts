@@ -48,17 +48,6 @@ export interface UserProfile {
   role?: 'admin' | 'user';
   kyc_status?: 'Not Started' | 'Pending Review' | 'Verified' | 'Rejected';
   kyc_notes?: string;
-  profileDebug?: ProfileDebugInfo;
-}
-
-export interface ProfileDebugInfo {
-  authId?: string;
-  authEmail?: string;
-  profileId?: string;
-  profileEmail?: string;
-  profileRole?: string;
-  isAdmin: boolean;
-  fetchError?: string;
 }
 
 export type DealRole = 'buyer' | 'seller';

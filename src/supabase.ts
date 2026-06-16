@@ -4,7 +4,7 @@
  */
 
 import { createClient } from '@supabase/supabase-js';
-import { UserProfile, Language, ProfileDebugInfo } from './types';
+import { UserProfile, Language } from './types';
 import { i18nDict } from './messages';
 import { isSafePasswordCharset, normalizePasswordInput, passwordCharsetError } from './passwordPolicy';
 
@@ -137,17 +137,6 @@ function normalizedProfileRole(role: unknown): NonNullable<UserProfile['role']> 
   return isAdminProfileRole(role) ? 'admin' : 'user';
 }
 
-function profileFetchErrorMessage(error: unknown): string {
-  if (!error) return '';
-  if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message;
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return String(error);
-  }
-}
-
 export type KredoMfaFactor = {
   id: string;
   friendlyName: string;
@@ -253,11 +242,8 @@ async function getMfaRequirement(): Promise<{
   return { required, factorId: required ? verifiedTotp.id : undefined };
 }
 
-async function fetchProfileRow(userId: string, email?: string | null): Promise<{
-  profile: ProfileRow | null;
-  error?: string;
-}> {
-  if (!supabase) return { profile: null, error: 'Supabase is not configured.' };
+async function fetchProfileRow(userId: string, email?: string | null): Promise<ProfileRow | null> {
+  if (!supabase) return null;
 
   const profileById = await supabase
     .from('profiles')
@@ -265,13 +251,11 @@ async function fetchProfileRow(userId: string, email?: string | null): Promise<{
     .eq('id', userId)
     .maybeSingle();
   if (!profileById.error && profileById.data) {
-    console.log('KREDO fetched profile:', profileById.data);
-    console.log('KREDO profile role:', profileById.data?.role);
-    return { profile: profileById.data as ProfileRow };
+    return profileById.data as ProfileRow;
   }
 
   if (profileById.error) {
-    console.error('[KREDO AUTH] profile by id error:', profileById.error);
+    console.error('Supabase profile lookup by id failed:', profileById.error);
     console.warn('Profile lookup by id failed; retrying once:', profileById.error);
     const retryById = await supabase
       .from('profiles')
@@ -279,22 +263,15 @@ async function fetchProfileRow(userId: string, email?: string | null): Promise<{
       .eq('id', userId)
       .maybeSingle();
     if (!retryById.error && retryById.data) {
-      console.log('KREDO fetched profile:', retryById.data);
-      console.log('KREDO profile role:', retryById.data?.role);
-      return { profile: retryById.data as ProfileRow };
+      return retryById.data as ProfileRow;
     }
     if (retryById.error) {
-      console.error('[KREDO AUTH] profile by id retry error:', retryById.error);
+      console.error('Supabase profile lookup by id retry failed:', retryById.error);
     }
   }
 
   const normalizedEmail = String(email || '').trim();
-  if (!normalizedEmail) {
-    return {
-      profile: null,
-      error: profileFetchErrorMessage(profileById.error) || 'Profile was not found by user id and auth email is empty.',
-    };
-  }
+  if (!normalizedEmail) return null;
 
   const profileByEmail = await supabase
     .from('profiles')
@@ -302,20 +279,10 @@ async function fetchProfileRow(userId: string, email?: string | null): Promise<{
     .ilike('email', normalizedEmail)
     .maybeSingle();
   if (profileByEmail.error) {
-    console.error('[KREDO AUTH] profile by email error:', profileByEmail.error);
-    return {
-      profile: null,
-      error: profileFetchErrorMessage(profileByEmail.error),
-    };
+    console.error('Supabase profile lookup by email failed:', profileByEmail.error);
+    return null;
   }
-  console.log('KREDO fetched profile:', profileByEmail.data);
-  console.log('KREDO profile role:', profileByEmail.data?.role);
-  return {
-    profile: profileByEmail.data as ProfileRow | null,
-    error: profileByEmail.data
-      ? undefined
-      : profileFetchErrorMessage(profileById.error) || 'Profile was not found by user id or email.',
-  };
+  return profileByEmail.data as ProfileRow | null;
 }
 
 async function ensureSupabaseProfile(authUser: AuthUserLike): Promise<{
@@ -375,26 +342,11 @@ async function ensureSupabaseProfile(authUser: AuthUserLike): Promise<{
 }
 
 async function buildSupabaseProfile(authUser: AuthUserLike, fallback?: Partial<UserProfile>): Promise<UserProfile> {
-  console.log('[KREDO AUTH] user:', authUser);
-  const { profile: profileRow, error: profileError } = await fetchProfileRow(authUser.id, authUser.email);
-  const isAdmin = isAdminProfileRole(profileRow?.role);
-
-  console.log('[KREDO AUTH] profile:', profileRow);
-  console.log('[KREDO AUTH] role:', profileRow?.role);
-  console.log('[KREDO AUTH] isAdmin:', isAdmin);
+  const profileRow = await fetchProfileRow(authUser.id, authUser.email);
 
   const databaseName = [profileRow?.first_name, profileRow?.last_name].filter(Boolean).join(' ').trim();
   const emailVerified = !!(authUser.email_confirmed_at || authUser.confirmed_at) || !!profileRow?.email_verified;
   const kycStatus = profileRow?.kyc_status || fallback?.kyc_status || 'Not Started';
-  const profileDebug: ProfileDebugInfo = {
-    authId: authUser.id,
-    authEmail: authUser.email || '',
-    profileId: profileRow?.id || '',
-    profileEmail: profileRow?.email || '',
-    profileRole: profileRow?.role || '',
-    isAdmin,
-    fetchError: profileError,
-  };
 
   return {
     id: authUser.id,
@@ -410,7 +362,6 @@ async function buildSupabaseProfile(authUser: AuthUserLike, fallback?: Partial<U
     role: normalizedProfileRole(profileRow?.role),
     kyc_status: kycStatus,
     kyc_notes: profileRow?.kyc_notes || undefined,
-    profileDebug,
   };
 }
 
@@ -448,14 +399,13 @@ export const KredoAuth = {
     return ensureSupabaseProfile(data.user);
   },
 
-  refreshCurrentProfile: async (): Promise<{ success: boolean; error?: unknown; user?: UserProfile; profileDebug?: ProfileDebugInfo }> => {
+  refreshCurrentProfile: async (): Promise<{ success: boolean; error?: unknown; user?: UserProfile }> => {
     if (!supabase) return { success: false, error: 'Supabase is not configured.' };
     const { data, error } = await supabase.auth.getUser();
     if (error || !data.user) {
       if (error) console.error('Unable to refresh current profile:', error);
       return { success: false, error: error || 'No authenticated user.' };
     }
-    console.log('KREDO auth user:', data.user?.id, data.user?.email);
     const ensured = await ensureSupabaseProfile(data.user);
     if (!ensured.success) {
       console.error('Profile refresh ensure failed:', ensured.error);
@@ -466,11 +416,11 @@ export const KredoAuth = {
       profile = retryProfile;
     }
     localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
-    return { success: true, user: profile, profileDebug: profile.profileDebug };
+    return { success: true, user: profile };
   },
 
   // Restore current session securely
-  restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean; mfaRequired?: boolean; profileDebug?: ProfileDebugInfo }> => {
+  restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean; mfaRequired?: boolean }> => {
     try {
       const sessionData = localStorage.getItem(SESSION_KEY);
       const cachedProfile: UserProfile | null = sessionData ? JSON.parse(sessionData) : null;
@@ -481,7 +431,6 @@ export const KredoAuth = {
           localStorage.removeItem(SESSION_KEY);
           return { user: null, expired: !!cachedProfile };
         }
-        console.log('KREDO auth user:', data.session.user?.id, data.session.user?.email);
         const mfa = await getMfaRequirement();
         if (mfa.error) {
           console.error('Unable to verify MFA assurance level:', mfa.error);
@@ -498,7 +447,7 @@ export const KredoAuth = {
         }
         const userProfile = await buildSupabaseProfile(data.session.user, cachedProfile || undefined);
         localStorage.setItem(SESSION_KEY, JSON.stringify(userProfile));
-        return { user: userProfile, expired: false, profileDebug: userProfile.profileDebug };
+        return { user: userProfile, expired: false };
       }
 
       return { user: cachedProfile, expired: false };
