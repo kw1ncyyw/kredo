@@ -258,17 +258,6 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (
-      currentRoute === 'admin'
-      && isLoggedIn
-      && user
-      && (!isSupabaseConfigured || user.role !== 'admin')
-    ) {
-      setRoute('dashboard');
-    }
-  }, [currentRoute, isLoggedIn, user]);
-
-  useEffect(() => {
     if (!isSupabaseConfigured || !isLoggedIn || !user || currentRoute !== 'dashboard') return;
     if (profileEnsureAttemptedFor.current === user.id) return;
     profileEnsureAttemptedFor.current = user.id;
@@ -344,6 +333,26 @@ export default function App() {
     setUser(profile);
     setIsLoggedIn(true);
     localStorage.setItem('safedeal_user', JSON.stringify(profile));
+    if (isSupabaseConfigured) {
+      void KredoAuth.refreshCurrentProfile().then((result) => {
+        if (result.success && result.user) {
+          setUser(result.user);
+          localStorage.setItem('safedeal_user', JSON.stringify(result.user));
+        } else if (!result.success) {
+          console.error('Profile refresh after login failed:', result.error);
+          window.setTimeout(() => {
+            void KredoAuth.refreshCurrentProfile().then((retry) => {
+              if (retry.success && retry.user) {
+                setUser(retry.user);
+                localStorage.setItem('safedeal_user', JSON.stringify(retry.user));
+              } else if (!retry.success) {
+                console.error('Profile refresh retry after login failed:', retry.error);
+              }
+            });
+          }, 800);
+        }
+      });
+    }
   };
 
   const logout = () => {

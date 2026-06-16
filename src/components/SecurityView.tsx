@@ -23,6 +23,7 @@ import {
 import { AppTheme, Language, UserProfile } from '../types';
 import { i18nDict } from '../messages';
 import { isSupabaseConfigured, KredoAuth, KredoMfaFactor } from '../supabase';
+import { isSafePasswordCharset, normalizePasswordInput, passwordCharsetError } from '../passwordPolicy';
 
 interface SecurityViewProps {
   user: UserProfile;
@@ -162,22 +163,34 @@ export default function SecurityView({ user, lang, theme }: SecurityViewProps) {
     setPasswordMessage('');
     setPasswordError('');
 
-    if (!currentPassword || !newPassword || !confirmPassword) {
+    const cleanedCurrentPassword = normalizePasswordInput(currentPassword);
+    const cleanedNewPassword = normalizePasswordInput(newPassword);
+    const cleanedConfirmPassword = normalizePasswordInput(confirmPassword);
+
+    if (!cleanedCurrentPassword || !cleanedNewPassword || !cleanedConfirmPassword) {
       setPasswordError(t.fillFields);
       return;
     }
-    if (newPassword.length < 8) {
+    if (
+      !isSafePasswordCharset(cleanedCurrentPassword)
+      || !isSafePasswordCharset(cleanedNewPassword)
+      || !isSafePasswordCharset(cleanedConfirmPassword)
+    ) {
+      setPasswordError(passwordCharsetError(lang));
+      return;
+    }
+    if (cleanedNewPassword.length < 8) {
       setPasswordError(t.passwordLength);
       return;
     }
-    if (newPassword !== confirmPassword) {
+    if (cleanedNewPassword !== cleanedConfirmPassword) {
       setPasswordError(t.passwordsMismatch);
       return;
     }
 
     setPasswordLoading(true);
     try {
-      const result = await KredoAuth.changePassword(user.email, currentPassword, newPassword, lang);
+      const result = await KredoAuth.changePassword(user.email, cleanedCurrentPassword, cleanedNewPassword, lang);
       if (!result.success) {
         setPasswordError(result.error || t.unexpectedError);
         return;

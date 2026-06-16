@@ -8,6 +8,7 @@ import { AlertTriangle, CheckCircle2, Eye, EyeOff, Loader2, LockKeyhole } from '
 import { AppTheme, Language, RoutePath } from '../types';
 import { i18nDict } from '../messages';
 import { KredoAuth } from '../supabase';
+import { isSafePasswordCharset, normalizePasswordInput, passwordCharsetError } from '../passwordPolicy';
 
 interface ResetPasswordPageProps {
   lang: Language;
@@ -30,22 +31,29 @@ export default function ResetPasswordPage({ lang, theme, setRoute }: ResetPasswo
     setError('');
     setSuccess('');
 
-    if (!password || !confirmPassword) {
+    const cleanedPassword = normalizePasswordInput(password);
+    const cleanedConfirmPassword = normalizePasswordInput(confirmPassword);
+
+    if (!cleanedPassword || !cleanedConfirmPassword) {
       setError(t.fillFields);
       return;
     }
-    if (password.length < 8) {
+    if (!isSafePasswordCharset(cleanedPassword) || !isSafePasswordCharset(cleanedConfirmPassword)) {
+      setError(passwordCharsetError(lang));
+      return;
+    }
+    if (cleanedPassword.length < 8) {
       setError(t.passwordLength);
       return;
     }
-    if (password !== confirmPassword) {
+    if (cleanedPassword !== cleanedConfirmPassword) {
       setError(t.passwordsMismatch);
       return;
     }
 
     setLoading(true);
     try {
-      const result = await KredoAuth.updateRecoveryPassword(password, lang);
+      const result = await KredoAuth.updateRecoveryPassword(cleanedPassword, lang);
       if (!result.success) {
         setError(result.error || t.unexpectedError);
         return;

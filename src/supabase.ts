@@ -6,6 +6,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { UserProfile, Language } from './types';
 import { i18nDict } from './messages';
+import { isSafePasswordCharset, normalizePasswordInput, passwordCharsetError } from './passwordPolicy';
 
 // Read environmental variables
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
@@ -367,6 +368,26 @@ export const KredoAuth = {
     return ensureSupabaseProfile(data.user);
   },
 
+  refreshCurrentProfile: async (): Promise<{ success: boolean; error?: unknown; user?: UserProfile }> => {
+    if (!supabase) return { success: false, error: 'Supabase is not configured.' };
+    const { data, error } = await supabase.auth.getUser();
+    if (error || !data.user) {
+      if (error) console.error('Unable to refresh current profile:', error);
+      return { success: false, error: error || 'No authenticated user.' };
+    }
+    const ensured = await ensureSupabaseProfile(data.user);
+    if (!ensured.success) {
+      console.error('Profile refresh ensure failed:', ensured.error);
+    }
+    let profile = await buildSupabaseProfile(data.user);
+    if (!profile.role) {
+      const retryProfile = await buildSupabaseProfile(data.user);
+      profile = retryProfile;
+    }
+    localStorage.setItem(SESSION_KEY, JSON.stringify(profile));
+    return { success: true, user: profile };
+  },
+
   // Restore current session securely
   restoreSession: async (): Promise<{ user: UserProfile | null, expired: boolean; mfaRequired?: boolean }> => {
     try {
@@ -472,12 +493,16 @@ export const KredoAuth = {
     factorId?: string;
   }> => {
     const cleanedEmail = email.trim().toLowerCase();
+    const cleanedPassword = normalizePasswordInput(password);
     const t = i18nDict[lang] || i18nDict.ua;
+    if (!isSafePasswordCharset(cleanedPassword)) {
+      return { success: false, error: passwordCharsetError(lang) };
+    }
 
     // 1. Intercept demo accounts FIRST to bypass database checks and avoid conflict
     if (
       (cleanedEmail === 'demo@kredo.co.ua' || cleanedEmail === 'demo@kredo.com' || cleanedEmail === 'demo@kredo.inc') &&
-      (password === 'password' || password === 'demopass123')
+      (cleanedPassword === 'password' || cleanedPassword === 'demopass123')
     ) {
       const profile: UserProfile = {
         id: 'u-demo',
@@ -501,7 +526,7 @@ export const KredoAuth = {
       try {
         const { data, error } = await supabase.auth.signInWithPassword({
           email: cleanedEmail,
-          password: password,
+          password: cleanedPassword,
         });
         if (error) {
           return { success: false, error: translateAuthError(error.message, lang) };
@@ -531,7 +556,7 @@ export const KredoAuth = {
     }
 
     // 3. Fallback simulation (with Hashing!)
-    const pHash = await hashPassword(password);
+    const pHash = await hashPassword(cleanedPassword);
 
     // Check custom registered local simulation users
     const users = KredoAuth.getRegisteredUsers();
@@ -570,14 +595,18 @@ export const KredoAuth = {
     lang: Language = 'ua'
   ): Promise<{ success: boolean; emailSent: boolean; error?: string; user?: UserProfile }> => {
     const cleanedEmail = email.trim().toLowerCase();
+    const cleanedPassword = normalizePasswordInput(password);
     const t = i18nDict[lang] || i18nDict.ua;
+    if (!isSafePasswordCharset(cleanedPassword)) {
+      return { success: false, emailSent: false, error: passwordCharsetError(lang) };
+    }
 
     // 1. If Supabase is configured
     if (isSupabaseConfigured && supabase) {
       try {
         const { data, error } = await supabase.auth.signUp({
           email: cleanedEmail,
-          password: password,
+          password: cleanedPassword,
           options: {
             data: {
               full_name: `${firstName.trim()} ${lastName.trim()}`.trim(),
@@ -714,6 +743,11 @@ export const KredoAuth = {
     if (!isSupabaseConfigured || !supabase) {
       return { success: false, error: i18nDict[lang].security.supabaseRequired };
     }
+    const cleanedCurrentPassword = normalizePasswordInput(currentPassword);
+    const cleanedNewPassword = normalizePasswordInput(newPassword);
+    if (!isSafePasswordCharset(cleanedCurrentPassword) || !isSafePasswordCharset(cleanedNewPassword)) {
+      return { success: false, error: passwordCharsetError(lang) };
+    }
 
     const reauthClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
@@ -724,13 +758,13 @@ export const KredoAuth = {
     });
     const { error: reauthError } = await reauthClient.auth.signInWithPassword({
       email,
-      password: currentPassword,
+      password: cleanedCurrentPassword,
     });
     if (reauthError) {
       return { success: false, error: i18nDict[lang].security.currentPassMismatch };
     }
 
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const { error } = await supabase.auth.updateUser({ password: cleanedNewPassword });
     if (error) {
       return { success: false, error: translateAuthError(error.message, lang) };
     }
@@ -744,11 +778,15 @@ export const KredoAuth = {
     if (!isSupabaseConfigured || !supabase) {
       return { success: false, error: i18nDict[lang].security.supabaseRequired };
     }
+    const cleanedNewPassword = normalizePasswordInput(newPassword);
+    if (!isSafePasswordCharset(cleanedNewPassword)) {
+      return { success: false, error: passwordCharsetError(lang) };
+    }
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
       return { success: false, error: i18nDict[lang].security.recoveryLinkInvalid };
     }
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+    const { error } = await supabase.auth.updateUser({ password: cleanedNewPassword });
     if (error) {
       return { success: false, error: translateAuthError(error.message, lang) };
     }

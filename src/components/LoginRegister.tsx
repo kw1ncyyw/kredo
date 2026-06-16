@@ -11,6 +11,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { KredoAuth } from '../supabase';
 import { isValidNationalPhone, normalizeInternationalPhone, PHONE_COUNTRIES } from '../phoneCountries';
 import PhoneNumberInput from './PhoneNumberInput';
+import { isSafePasswordCharset, normalizePasswordInput, passwordCharsetError } from '../passwordPolicy';
 
 interface LoginRegisterProps {
   setRoute: (route: RoutePath) => void;
@@ -73,6 +74,7 @@ export default function LoginRegister({
   const otpRefs = useRef<Array<HTMLInputElement | null>>([]);
   const requestGeneration = useRef(0);
   const transitionTimeout = useRef<number | null>(null);
+  const refreshCaptchaAfterValidationFailure = useRef(false);
 
   const clearTransitionTimeout = () => {
     if (transitionTimeout.current !== null) {
@@ -187,6 +189,7 @@ export default function LoginRegister({
 
   const validateForm = () => {
     let tempErrors: { [key: string]: string } = {};
+    refreshCaptchaAfterValidationFailure.current = false;
 
     if (viewState !== 'mfa-challenge') {
       if (!email) {
@@ -197,26 +200,36 @@ export default function LoginRegister({
     }
 
     if (viewState === 'login' || viewState === 'register') {
-      if (!password) {
+      const cleanedPassword = normalizePasswordInput(password);
+      const cleanedConfirmPassword = normalizePasswordInput(confirmPassword);
+      if (!cleanedPassword) {
         tempErrors.password = t.auth.requiredError;
-      } else if (password.length < 6) {
+      } else if (!isSafePasswordCharset(cleanedPassword)) {
+        tempErrors.password = passwordCharsetError(lang);
+      } else if (cleanedPassword.length < 8) {
         tempErrors.password = t.auth.passwordLengthError;
       }
 
       // CAPTCHA verification
       if (!captchaInput) {
-        tempErrors.captcha = t.auth.requiredError;
+        tempErrors.captcha = tr.captchaRequired;
       } else if (captchaLoadError || !captchaCode) {
         tempErrors.captcha = tr.captchaLoadError;
+        refreshCaptchaAfterValidationFailure.current = true;
       } else if (captchaInput.toUpperCase() !== captchaCode) {
         tempErrors.captcha = tr.incorrectCaptcha;
+        refreshCaptchaAfterValidationFailure.current = true;
       }
     }
 
     if (viewState === 'register') {
-      if (!confirmPassword) {
+      const cleanedPassword = normalizePasswordInput(password);
+      const cleanedConfirmPassword = normalizePasswordInput(confirmPassword);
+      if (!cleanedConfirmPassword) {
         tempErrors.confirmPassword = t.auth.requiredError;
-      } else if (confirmPassword !== password) {
+      } else if (!isSafePasswordCharset(cleanedConfirmPassword)) {
+        tempErrors.confirmPassword = passwordCharsetError(lang);
+      } else if (cleanedConfirmPassword !== cleanedPassword) {
         tempErrors.confirmPassword = t.auth.matchError;
       }
 
@@ -250,6 +263,7 @@ export default function LoginRegister({
 
     if (!validateForm()) {
       setLoading(false);
+      if (refreshCaptchaAfterValidationFailure.current) generateCaptcha();
       return;
     }
 
@@ -284,7 +298,7 @@ export default function LoginRegister({
 
         const response = await KredoAuth.signUp(
           email,
-          password,
+          normalizePasswordInput(password),
           firstName.trim(),
           lastName.trim(),
           fullPhoneNumber,
@@ -550,8 +564,11 @@ export default function LoginRegister({
                   <input
                     type={showPassword ? 'text' : 'password'}
                     id="auth-password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                      value={password}
+                      onChange={(e) => {
+                        setPassword(e.target.value);
+                        setErrors((current) => ({ ...current, password: '' }));
+                      }}
                     placeholder="••••••••"
                     disabled={loading}
                     className={`w-full text-xs font-semibold pl-10 pr-10 py-3 rounded-xl border transition-all ${
@@ -609,7 +626,10 @@ export default function LoginRegister({
                     type={showConfirmPassword ? 'text' : 'password'}
                     id="auth-confirmPassword"
                     value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    onChange={(e) => {
+                      setConfirmPassword(e.target.value);
+                      setErrors((current) => ({ ...current, confirmPassword: '' }));
+                    }}
                     placeholder="••••••••"
                     disabled={loading}
                     className={`w-full text-xs font-semibold pl-10 pr-10 py-3 rounded-xl border transition-all ${
