@@ -61,6 +61,7 @@ export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [authReady, setAuthReady] = useState(false);
+  const [profileRoleLoading, setProfileRoleLoading] = useState(false);
 
   // 5. Escrows & notific arrays
   const [deals, setDeals] = useState<EscrowDeal[]>(INITIAL_DEALS);
@@ -222,6 +223,7 @@ export default function App() {
       setTheme('light');
     }
 
+    setProfileRoleLoading(isSupabaseConfigured);
     KredoAuth.restoreSession()
       .then(({user: restoredUser, expired, mfaRequired}) => {
        if (restoredUser) {
@@ -242,7 +244,10 @@ export default function App() {
               : 'Сесія закінчилась. Увійдіть повторно.');
        }
       })
-      .finally(() => setAuthReady(true));
+      .finally(() => {
+        setProfileRoleLoading(false);
+        setAuthReady(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -334,10 +339,12 @@ export default function App() {
     setIsLoggedIn(true);
     localStorage.setItem('safedeal_user', JSON.stringify(profile));
     if (isSupabaseConfigured) {
+      setProfileRoleLoading(true);
       void KredoAuth.refreshCurrentProfile().then((result) => {
         if (result.success && result.user) {
           setUser(result.user);
           localStorage.setItem('safedeal_user', JSON.stringify(result.user));
+          setProfileRoleLoading(false);
         } else if (!result.success) {
           console.error('Profile refresh after login failed:', result.error);
           window.setTimeout(() => {
@@ -348,9 +355,13 @@ export default function App() {
               } else if (!retry.success) {
                 console.error('Profile refresh retry after login failed:', retry.error);
               }
+              setProfileRoleLoading(false);
             });
           }, 800);
         }
+      }).catch((error) => {
+        console.error('Profile refresh after login crashed:', error);
+        setProfileRoleLoading(false);
       });
     }
   };
@@ -359,6 +370,7 @@ export default function App() {
     void KredoAuth.signOut();
     setUser(null);
     setIsLoggedIn(false);
+    setProfileRoleLoading(false);
     localStorage.removeItem('safedeal_user');
     setRoute('home');
   };
@@ -804,7 +816,8 @@ export default function App() {
     'notifications',
     'profile',
     'security',
-    'settings'
+    'settings',
+    'admin'
   ].includes(currentRoute);
 
   const protectedRoutes: RoutePath[] = [
@@ -843,28 +856,6 @@ export default function App() {
     );
   }
 
-  if (currentRoute === 'admin' && isLoggedIn && user) {
-    return (
-      <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'} transition-all duration-300 font-sans`}>
-        <Navbar
-          currentRoute={currentRoute}
-          setRoute={setRoute}
-          lang={lang}
-          setLang={setLang}
-          theme={theme}
-          toggleTheme={toggleTheme}
-          isLoggedIn={isLoggedIn}
-          logout={logout}
-          setLanguageByPrefix={setLanguageByPrefix}
-        />
-        <Suspense fallback={pageFallback}>
-          {renderPageContent()}
-        </Suspense>
-        <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />
-      </div>
-    );
-  }
-
   if (isDashboardRoute && user) {
     return (
       <div className={`min-h-screen ${theme === 'dark' ? 'bg-[#030303]' : 'bg-stone-50'} transition-all duration-300 font-sans`}>
@@ -886,6 +877,7 @@ export default function App() {
             notifications={notifications}
             theme={theme}
             lang={lang}
+            profileRoleLoading={profileRoleLoading}
         >
           <Suspense fallback={pageFallback}>
             {renderPageContent()}

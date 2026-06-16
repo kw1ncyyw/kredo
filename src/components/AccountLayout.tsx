@@ -10,7 +10,6 @@ import {
   User,
 } from 'lucide-react';
 import { AppTheme, Language, RoutePath, SystemNotification, UserProfile } from '../types';
-import { isSupabaseConfigured } from '../supabase';
 
 interface AccountLayoutProps {
   children: React.ReactNode;
@@ -20,6 +19,7 @@ interface AccountLayoutProps {
   notifications: SystemNotification[];
   theme: AppTheme;
   lang: Language;
+  profileRoleLoading?: boolean;
 }
 
 export default function AccountLayout({
@@ -30,6 +30,7 @@ export default function AccountLayout({
   notifications,
   theme,
   lang,
+  profileRoleLoading = false,
 }: AccountLayoutProps) {
   const unreadCount = useMemo(
     () => notifications.reduce((count, notification) => count + (notification.read ? 0 : 1), 0),
@@ -46,6 +47,7 @@ export default function AccountLayout({
       profile: 'Мій профіль',
       settings: 'Налаштування',
       admin: 'Адмін-панель',
+      roleLoading: 'Перевіряємо роль',
     },
     ru: {
       account: 'Личный кабинет',
@@ -57,6 +59,7 @@ export default function AccountLayout({
       profile: 'Мой профиль',
       settings: 'Настройки',
       admin: 'Админ-панель',
+      roleLoading: 'Проверяем роль',
     },
     en: {
       account: 'Client account',
@@ -68,6 +71,7 @@ export default function AccountLayout({
       profile: 'My profile',
       settings: 'Settings',
       admin: 'Admin panel',
+      roleLoading: 'Checking role',
     },
   }[lang]), [lang]);
 
@@ -78,10 +82,10 @@ export default function AccountLayout({
     { route: 'verification' as RoutePath, label: labels.verification, icon: Shield },
     { route: 'notifications' as RoutePath, label: labels.notifications, icon: Bell, badge: unreadCount },
     { route: 'profile' as RoutePath, label: labels.profile, icon: User },
-    { route: 'settings' as RoutePath, label: labels.settings, icon: Settings },
-    ...(isSupabaseConfigured && user.role === 'admin'
+    ...(user.role === 'admin'
       ? [{ route: 'admin' as RoutePath, label: labels.admin, icon: ShieldAlert }]
       : []),
+    { route: 'settings' as RoutePath, label: labels.settings, icon: Settings },
   ], [labels, unreadCount, user.role]);
   const statusLabels = {
     ua: {
@@ -175,6 +179,15 @@ export default function AccountLayout({
                 </button>
               );
             })}
+            {profileRoleLoading && (
+              <div className={`flex min-h-[44px] shrink-0 items-center rounded-full border px-4 py-2.5 text-sm font-bold ${
+                theme === 'dark'
+                  ? 'border-white/[0.07] bg-white/[0.025] text-stone-500'
+                  : 'border-stone-200/80 bg-white/60 text-stone-400'
+              }`}>
+                {labels.roleLoading}
+              </div>
+            )}
           </nav>
         </header>
 

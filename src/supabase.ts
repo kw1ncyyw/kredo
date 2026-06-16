@@ -236,21 +236,25 @@ async function fetchProfileRow(userId: string): Promise<ProfileRow | null> {
 
   const primary = await supabase
     .from('profiles')
-    .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name,phone')
+    .select('*')
     .eq('id', userId)
-    .maybeSingle();
-  if (!primary.error) return primary.data as ProfileRow | null;
+    .single();
+  if (!primary.error) {
+    console.log('KREDO profile role:', primary.data?.role);
+    return primary.data as ProfileRow | null;
+  }
 
-  console.warn('Profile lookup with phone column failed; retrying core columns:', primary.error);
+  console.warn('Profile lookup failed; retrying once:', primary.error);
   const fallback = await supabase
     .from('profiles')
-    .select('role,email_verified,kyc_status,kyc_notes,first_name,last_name')
+    .select('*')
     .eq('id', userId)
-    .maybeSingle();
+    .single();
   if (fallback.error) {
     console.error('Supabase profile lookup failed:', fallback.error);
     return null;
   }
+  console.log('KREDO profile role:', fallback.data?.role);
   return fallback.data as ProfileRow | null;
 }
 

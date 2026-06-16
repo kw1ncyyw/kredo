@@ -405,7 +405,7 @@ export default function AdminPanel({
 
   if (user.role !== 'admin') {
     return (
-      <div className={`min-h-[70vh] px-4 py-28 ${shell}`}>
+      <div className={`min-h-[50vh] px-4 py-10 ${shell}`}>
         <div className={`mx-auto max-w-lg rounded-[2rem] border p-8 text-center ${card}`}>
           <ShieldAlert className="mx-auto h-10 w-10 text-red-500" />
           <h1 className="mt-4 text-2xl font-black">{t.accessDenied}</h1>
@@ -435,7 +435,7 @@ export default function AdminPanel({
   );
 
   return (
-    <div className={`min-h-screen pt-24 ${shell}`}>
+    <div className={`min-h-[60vh] ${shell}`}>
       <div className="mx-auto max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
         <header className={`rounded-[2rem] border p-6 sm:p-8 ${card}`}>
           <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
