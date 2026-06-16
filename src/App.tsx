@@ -33,6 +33,7 @@ import TermsPage from './components/TermsPage';
 import PrivacyPage from './components/PrivacyPage';
 import DisputesPage from './components/DisputesPage';
 import PaymentsPage from './components/PaymentsPage';
+import SupportChatWidget from './components/SupportChatWidget';
 import { MarketplacePlatformsSection, PaymentHomeSection, PaymentMethodsShowcase } from './components/PaymentMethods';
 import { i18nDict } from './messages';
 import { KredoAuth, KredoData, isSupabaseConfigured, supabase } from './supabase';
@@ -922,6 +923,7 @@ export default function App() {
             {renderPageContent()}
           </Suspense>
         </AccountLayout>
+        <SupportChatWidget lang={lang} theme={theme} user={user} setRoute={setRoute} />
         <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />
       </div>
     );
@@ -946,6 +948,7 @@ export default function App() {
         </Suspense>
       </main>
       <Footer currentRoute={currentRoute} setRoute={setRoute} lang={lang} theme={theme} />
+      <SupportChatWidget lang={lang} theme={theme} user={user} setRoute={setRoute} />
       <CookieConsent lang={lang} theme={theme} setRoute={setRoute} />
     </div>
   );

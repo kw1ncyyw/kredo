@@ -13,6 +13,7 @@ import {
   FileCheck2,
   LayoutDashboard,
   Mail,
+  MessageCircle,
   Search,
   Settings,
   ShieldAlert,
@@ -31,7 +32,7 @@ interface AdminPanelProps {
   notifications: SystemNotification[];
 }
 
-type AdminTab = 'overview' | 'users' | 'deals' | 'kyc' | 'contacts' | 'notifications' | 'settings';
+type AdminTab = 'overview' | 'users' | 'deals' | 'kyc' | 'contacts' | 'support' | 'notifications' | 'settings';
 
 type AdminUser = {
   id: string;
@@ -76,6 +77,21 @@ type AdminContact = {
   created_at: string;
 };
 
+type AdminSupportRequest = {
+  id: string | number;
+  user_id?: string | null;
+  name: string;
+  email: string;
+  topic: string;
+  message: string;
+  source?: string;
+  page_url?: string;
+  chat_history?: string;
+  status: 'open' | 'reviewed' | 'closed';
+  admin_note?: string;
+  created_at: string;
+};
+
 const copy = {
   ua: {
     title: 'Адмін-панель KREDO',
@@ -88,12 +104,14 @@ const copy = {
     deals: 'Угоди',
     kyc: 'KYC-заявки',
     contacts: 'Звернення',
+    support: 'Чат / Запити',
     notifications: 'Сповіщення',
     settings: 'Налаштування',
     totalUsers: 'Користувачі',
     totalDeals: 'Угоди',
     pendingKyc: 'KYC на перевірці',
     pendingContacts: 'Нові звернення',
+    openSupport: 'Запити з чату',
     recentActivity: 'Остання активність',
     search: 'Пошук за email, іменем або статусом',
     email: 'Email',
@@ -117,6 +135,10 @@ const copy = {
     message: 'Повідомлення',
     markResolved: 'Позначити вирішеним',
     restorePending: 'Повернути в роботу',
+    markReviewed: 'Позначити переглянутим',
+    closeRequest: 'Закрити запит',
+    pageUrl: 'Сторінка',
+    chatHistory: 'Історія чату',
     adminOnly: 'Роль адміністратора призначається вручну в Supabase profiles.role.',
     dataNote: 'Дані доступні через RLS-політики тільки для адміністраторів.',
     empty: 'Нічого не знайдено',
@@ -134,12 +156,14 @@ const copy = {
     deals: 'Deals',
     kyc: 'KYC requests',
     contacts: 'Contact requests',
+    support: 'Chat / Requests',
     notifications: 'Notifications',
     settings: 'Settings',
     totalUsers: 'Users',
     totalDeals: 'Deals',
     pendingKyc: 'Pending KYC',
     pendingContacts: 'Pending contacts',
+    openSupport: 'Chat requests',
     recentActivity: 'Recent activity',
     search: 'Search by email, name, or status',
     email: 'Email',
@@ -163,6 +187,10 @@ const copy = {
     message: 'Message',
     markResolved: 'Mark resolved',
     restorePending: 'Return to pending',
+    markReviewed: 'Mark reviewed',
+    closeRequest: 'Close request',
+    pageUrl: 'Page URL',
+    chatHistory: 'Chat history',
     adminOnly: 'Admin role is assigned manually in Supabase profiles.role.',
     dataNote: 'Data is available only to administrators through RLS policies.',
     empty: 'Nothing found',
@@ -180,12 +208,14 @@ const copy = {
     deals: 'Сделки',
     kyc: 'KYC-заявки',
     contacts: 'Обращения',
+    support: 'Чат / Запросы',
     notifications: 'Уведомления',
     settings: 'Настройки',
     totalUsers: 'Пользователи',
     totalDeals: 'Сделки',
     pendingKyc: 'KYC на проверке',
     pendingContacts: 'Новые обращения',
+    openSupport: 'Запросы из чата',
     recentActivity: 'Последняя активность',
     search: 'Поиск по email, имени или статусу',
     email: 'Email',
@@ -209,6 +239,10 @@ const copy = {
     message: 'Сообщение',
     markResolved: 'Отметить решенным',
     restorePending: 'Вернуть в работу',
+    markReviewed: 'Отметить просмотренным',
+    closeRequest: 'Закрыть запрос',
+    pageUrl: 'Страница',
+    chatHistory: 'История чата',
     adminOnly: 'Роль администратора назначается вручную в Supabase profiles.role.',
     dataNote: 'Данные доступны только администраторам через RLS-политики.',
     empty: 'Ничего не найдено',
@@ -234,6 +268,8 @@ const fallbackKyc: AdminKyc[] = [
 const fallbackContacts: AdminContact[] = [
   { id: 'contact-1', name: 'Олена', email: 'olena@example.com', topic: 'Transaction support', message: 'Потрібна допомога з умовами угоди.', status: 'pending', created_at: '2026-06-15T09:00:00Z' },
 ];
+
+const fallbackSupportRequests: AdminSupportRequest[] = [];
 
 function formatDate(value?: string) {
   if (!value) return '—';
@@ -278,6 +314,7 @@ export default function AdminPanel({
   const [deals] = useState<AdminDeal[]>(fallbackDeals);
   const [kycRequests, setKycRequests] = useState<AdminKyc[]>(fallbackKyc);
   const [contacts, setContacts] = useState<AdminContact[]>(fallbackContacts);
+  const [supportRequests, setSupportRequests] = useState<AdminSupportRequest[]>(fallbackSupportRequests);
   const [notes, setNotes] = useState<Record<string, string>>({});
   const isAdmin = isAdminProfileRole(user.role);
 
@@ -301,6 +338,7 @@ export default function AdminPanel({
       })));
       setKycRequests(result.kyc || []);
       setContacts(result.contacts || []);
+      setSupportRequests(result.supportRequests || []);
       setLoadError('');
     });
     return () => {
@@ -321,9 +359,13 @@ export default function AdminPanel({
   const filteredContacts = useMemo(() => contacts.filter((item) => (
     !query || `${item.name} ${item.email} ${item.topic} ${item.status}`.toLowerCase().includes(query)
   )), [contacts, query]);
+  const filteredSupportRequests = useMemo(() => supportRequests.filter((item) => (
+    !query || `${item.name} ${item.email} ${item.topic} ${item.status} ${item.page_url || ''}`.toLowerCase().includes(query)
+  )), [query, supportRequests]);
 
   const pendingKyc = kycRequests.filter((item) => item.status === 'Pending Review').length;
   const pendingContacts = contacts.filter((item) => item.status === 'pending').length;
+  const openSupportRequests = supportRequests.filter((item) => item.status === 'open').length;
 
   const activity = [
     ...kycRequests.slice(0, 3).map((item) => ({
@@ -334,6 +376,11 @@ export default function AdminPanel({
     ...contacts.slice(0, 3).map((item) => ({
       id: `contact-${item.id}`,
       title: `${t.contacts}: ${item.topic}`,
+      meta: `${item.email} · ${formatDate(item.created_at)}`,
+    })),
+    ...supportRequests.slice(0, 3).map((item) => ({
+      id: `support-${item.id}`,
+      title: `${t.support}: ${item.topic}`,
       meta: `${item.email} · ${formatDate(item.created_at)}`,
     })),
     ...notifications.slice(0, 3).map((item) => ({
@@ -387,6 +434,18 @@ export default function AdminPanel({
     setContacts((current) => current.map((item) => item.id === request.id ? { ...item, status: next } : item));
   };
 
+  const updateSupport = async (request: AdminSupportRequest, status: AdminSupportRequest['status']) => {
+    const note = notes[`support-${request.id}`] || request.admin_note || '';
+    if (isSupabaseConfigured) {
+      const result = await KredoData.updateSupportRequest(request.id, status, note);
+      if (!result.success) {
+        setLoadError(result.error || t.loadError);
+        return;
+      }
+    }
+    setSupportRequests((current) => current.map((item) => item.id === request.id ? { ...item, status, admin_note: note } : item));
+  };
+
   const openKycFile = async (path?: string) => {
     if (!path) return;
     if (!isSupabaseConfigured) {
@@ -425,6 +484,7 @@ export default function AdminPanel({
     { key: 'deals', label: t.deals, icon: ClipboardList, count: deals.length },
     { key: 'kyc', label: t.kyc, icon: FileCheck2, count: pendingKyc },
     { key: 'contacts', label: t.contacts, icon: Mail, count: pendingContacts },
+    { key: 'support', label: t.support, icon: MessageCircle, count: openSupportRequests },
     { key: 'notifications', label: t.notifications, icon: Bell },
     { key: 'settings', label: t.settings, icon: Settings },
   ];
@@ -516,12 +576,13 @@ export default function AdminPanel({
 
             {activeTab === 'overview' && (
               <>
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
                   {[
                     { label: t.totalUsers, value: users.length, icon: Users },
                     { label: t.totalDeals, value: deals.length, icon: ClipboardList },
                     { label: t.pendingKyc, value: pendingKyc, icon: FileCheck2 },
                     { label: t.pendingContacts, value: pendingContacts, icon: Mail },
+                    { label: t.openSupport, value: openSupportRequests, icon: MessageCircle },
                   ].map((item) => {
                     const Icon = item.icon;
                     return (
@@ -637,6 +698,59 @@ export default function AdminPanel({
                     <p className={`mt-4 rounded-2xl border p-4 text-sm leading-6 ${theme === 'dark' ? 'border-white/[0.06] bg-white/[0.025] text-stone-300' : 'border-stone-200 bg-stone-50 text-stone-700'}`}>
                       {item.message}
                     </p>
+                  </section>
+                )) : renderEmpty()}
+              </div>
+            )}
+
+            {activeTab === 'support' && (
+              <div className="space-y-4">
+                {filteredSupportRequests.length ? filteredSupportRequests.map((item) => (
+                  <section key={item.id} className={`rounded-[2rem] border p-5 ${card}`}>
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-3">
+                          <h3 className="text-lg font-black">{item.name}</h3>
+                          <Badge theme={theme} status={item.status} />
+                          {item.source && <Badge theme={theme} status={item.source} />}
+                        </div>
+                        <p className={`mt-1 text-sm ${muted}`}>{item.email} · {t.topic}: {item.topic} · {formatDate(item.created_at)}</p>
+                        {item.page_url && (
+                          <a href={item.page_url} target="_blank" rel="noreferrer" className="mt-2 inline-flex text-xs font-bold text-emerald-500">
+                            {t.pageUrl}
+                          </a>
+                        )}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <button onClick={() => updateSupport(item, 'reviewed')} className={`rounded-xl px-4 py-2 text-xs font-bold ${
+                          item.status === 'open' ? 'bg-emerald-500 text-white' : theme === 'dark' ? 'bg-white/10 text-white' : 'bg-stone-100 text-stone-800'
+                        }`}>
+                          {t.markReviewed}
+                        </button>
+                        <button onClick={() => updateSupport(item, 'closed')} className={`rounded-xl px-4 py-2 text-xs font-bold ${
+                          theme === 'dark' ? 'bg-white/10 text-white' : 'bg-stone-100 text-stone-800'
+                        }`}>
+                          {t.closeRequest}
+                        </button>
+                      </div>
+                    </div>
+                    <p className={`mt-4 rounded-2xl border p-4 text-sm leading-6 ${theme === 'dark' ? 'border-white/[0.06] bg-white/[0.025] text-stone-300' : 'border-stone-200 bg-stone-50 text-stone-700'}`}>
+                      {item.message}
+                    </p>
+                    {item.chat_history && (
+                      <details className={`mt-3 rounded-2xl border p-4 text-xs ${theme === 'dark' ? 'border-white/[0.06] bg-black/20 text-stone-300' : 'border-stone-200 bg-stone-50 text-stone-700'}`}>
+                        <summary className="cursor-pointer font-black">{t.chatHistory}</summary>
+                        <pre className="mt-3 whitespace-pre-wrap font-sans leading-5">{item.chat_history}</pre>
+                      </details>
+                    )}
+                    <textarea
+                      value={notes[`support-${item.id}`] ?? item.admin_note ?? ''}
+                      onChange={(event) => setNotes((current) => ({ ...current, [`support-${item.id}`]: event.target.value }))}
+                      placeholder={t.notesPlaceholder}
+                      className={`mt-4 min-h-20 w-full rounded-2xl border p-4 text-sm outline-none ${
+                        theme === 'dark' ? 'border-white/10 bg-black/20 text-white' : 'border-stone-200 bg-stone-50 text-stone-900'
+                      }`}
+                    />
                   </section>
                 )) : renderEmpty()}
               </div>

@@ -1121,6 +1121,33 @@ export const KredoData = {
     return error ? { success: false, error: error.message } : { success: true };
   },
 
+  submitSupportRequest: async (request: {
+    name: string;
+    email: string;
+    topic: string;
+    message: string;
+    userId?: string;
+    pageUrl?: string;
+    chatHistory?: string;
+  }) => {
+    if (!supabase) return { success: false, error: 'not_configured' };
+    const payload = {
+      user_id: request.userId || null,
+      name: request.name,
+      email: request.email,
+      topic: request.topic,
+      message: request.message,
+      source: 'chat',
+      status: 'open',
+      page_url: request.pageUrl || '',
+      chat_history: request.chatHistory || '',
+    };
+    const { error } = await supabase.from('support_requests').insert(payload);
+    if (!error) return { success: true };
+    console.error('Supabase support request insert failed:', error);
+    return { success: false, error: error.message };
+  },
+
   submitKycRequest: async (params: {
     user: UserProfile;
     documentType: string;
@@ -1193,15 +1220,22 @@ export const KredoData = {
 
   listAdminData: async () => {
     if (!supabase) return { success: false, error: 'not_configured' };
-    const [profiles, kyc, contacts] = await Promise.all([
+    const [profiles, kyc, contacts, supportRequests] = await Promise.all([
       supabase.from('profiles').select('*').order('created_at', { ascending: false }),
       supabase.from('kyc_requests').select('*').order('created_at', { ascending: false }),
       supabase.from('contact_requests').select('*').order('created_at', { ascending: false }),
+      supabase.from('support_requests').select('*').order('created_at', { ascending: false }),
     ]);
-    const error = profiles.error || kyc.error || contacts.error;
+    const error = profiles.error || kyc.error || contacts.error || supportRequests.error;
     return error
       ? { success: false, error: error.message }
-      : { success: true, profiles: profiles.data || [], kyc: kyc.data || [], contacts: contacts.data || [] };
+      : {
+          success: true,
+          profiles: profiles.data || [],
+          kyc: kyc.data || [],
+          contacts: contacts.data || [],
+          supportRequests: supportRequests.data || [],
+        };
   },
 
   reviewKyc: async (request: { id: string | number; userId: string; status: 'Verified' | 'Rejected'; note: string }) => {
@@ -1229,6 +1263,19 @@ export const KredoData = {
   updateContactStatus: async (id: string | number, status: 'pending' | 'resolved') => {
     if (!supabase) return { success: false, error: 'not_configured' };
     const { error } = await supabase.from('contact_requests').update({ status }).eq('id', id);
+    return error ? { success: false, error: error.message } : { success: true };
+  },
+
+  updateSupportRequest: async (id: string | number, status: 'open' | 'reviewed' | 'closed', adminNote?: string) => {
+    if (!supabase) return { success: false, error: 'not_configured' };
+    const { error } = await supabase
+      .from('support_requests')
+      .update({
+        status,
+        admin_note: adminNote || '',
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', id);
     return error ? { success: false, error: error.message } : { success: true };
   },
 
