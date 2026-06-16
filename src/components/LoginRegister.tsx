@@ -24,9 +24,57 @@ interface LoginRegisterProps {
 
 type AuthViewState = 'login' | 'register' | 'forgot-password' | 'email-verification' | 'mfa-challenge';
 const EMAIL_OTP_BOX_COUNT = 8;
+const PENDING_REGISTRATION_KEY = 'kredo_pending_registration';
+
+type PendingRegistrationDraft = {
+  email: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  phone: string;
+  phoneNational: string;
+  country: string;
+  countryCode: string;
+  lang: Language;
+};
 
 function normalizeEmailOtp(value: string): string {
   return value.replace(/\D/g, '').slice(0, EMAIL_OTP_BOX_COUNT);
+}
+
+function canUseBrowserStorage(storageName: 'sessionStorage' | 'localStorage') {
+  return typeof window !== 'undefined' && typeof window[storageName] !== 'undefined';
+}
+
+function readPendingRegistration(): PendingRegistrationDraft | null {
+  try {
+    if (!canUseBrowserStorage('sessionStorage')) return null;
+    const raw = window.sessionStorage.getItem(PENDING_REGISTRATION_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed.email === 'string' ? parsed as PendingRegistrationDraft : null;
+  } catch (error) {
+    console.error('[KREDO REGISTER] error', error);
+    return null;
+  }
+}
+
+function savePendingRegistration(draft: PendingRegistrationDraft) {
+  try {
+    if (!canUseBrowserStorage('sessionStorage')) return;
+    window.sessionStorage.setItem(PENDING_REGISTRATION_KEY, JSON.stringify(draft));
+  } catch (error) {
+    console.error('[KREDO REGISTER] error', error);
+  }
+}
+
+function clearPendingRegistration() {
+  try {
+    if (!canUseBrowserStorage('sessionStorage')) return;
+    window.sessionStorage.removeItem(PENDING_REGISTRATION_KEY);
+  } catch (error) {
+    console.error('[KREDO REGISTER] error', error);
+  }
 }
 
 export default function LoginRegister({
@@ -78,14 +126,27 @@ export default function LoginRegister({
 
   const clearTransitionTimeout = () => {
     if (transitionTimeout.current !== null) {
-      window.clearTimeout(transitionTimeout.current);
+      if (typeof window !== 'undefined') {
+        window.clearTimeout(transitionTimeout.current);
+      }
       transitionTimeout.current = null;
     }
+  };
+
+  const scheduleTransition = (callback: () => void, delay: number) => {
+    if (typeof window === 'undefined') {
+      callback();
+      return;
+    }
+    transitionTimeout.current = window.setTimeout(callback, delay);
   };
 
   const switchAuthMode = (target: 'login' | 'register', syncRoute = true) => {
     requestGeneration.current += 1;
     clearTransitionTimeout();
+    if (target === 'login' || target === 'register') {
+      clearPendingRegistration();
+    }
     setLoading(false);
     setViewState(target);
     setErrors({});
@@ -108,6 +169,20 @@ export default function LoginRegister({
   };
 
   useEffect(() => {
+    const pending = readPendingRegistration();
+    if (pending?.email && (initialViewState === 'login' || initialViewState === 'register')) {
+      setEmail(pending.email);
+      setFirstName(pending.firstName || '');
+      setLastName(pending.lastName || '');
+      setFullName(pending.fullName || `${pending.firstName || ''} ${pending.lastName || ''}`.trim());
+      setPhoneNational(pending.phoneNational || '');
+      setCountry(pending.country || 'Ukraine');
+      setAuthSuccessMsg(tr.codeSentEmail);
+      setTimer(60);
+      setVerificationCode('');
+      setViewState('email-verification');
+      return;
+    }
     if (initialViewState === 'login' || initialViewState === 'register') {
       switchAuthMode(initialViewState, false);
     } else {
@@ -123,6 +198,7 @@ export default function LoginRegister({
       }
     };
 
+    if (typeof window === 'undefined') return;
     window.addEventListener('kredo-auth-mode', handleAuthMode);
     return () => {
       requestGeneration.current += 1;
@@ -162,6 +238,32 @@ export default function LoginRegister({
       setCaptchaCode('');
       setCaptchaInput('');
       setCaptchaLoadError(true);
+    }
+  };
+
+  const safelyGenerateCaptcha = () => {
+    try {
+      generateCaptcha();
+    } catch (error) {
+      console.error('[KREDO REGISTER] error', error);
+    }
+  };
+
+  const showOtpScreen = (message = tr.codeSentEmail) => {
+    try {
+      console.log('[KREDO REGISTER] show OTP screen');
+      setAuthSuccessMsg(message);
+      setGeneralError('');
+      setErrors({});
+      setTimer(60);
+      setVerificationCode('');
+      setViewState('email-verification');
+      if (typeof window !== 'undefined') {
+        window.setTimeout(() => otpRefs.current[0]?.focus(), 80);
+      }
+    } catch (error) {
+      console.error('[KREDO REGISTER] error', error);
+      setViewState('email-verification');
     }
   };
 
@@ -263,13 +365,14 @@ export default function LoginRegister({
 
     if (!validateForm()) {
       setLoading(false);
-      if (refreshCaptchaAfterValidationFailure.current) generateCaptcha();
+      if (refreshCaptchaAfterValidationFailure.current) safelyGenerateCaptcha();
       return;
     }
 
     const requestId = ++requestGeneration.current;
     clearTransitionTimeout();
     setLoading(true);
+    let registerCodeSent = false;
 
     try {
       if (viewState === 'login') {
@@ -283,47 +386,73 @@ export default function LoginRegister({
           return;
         } else if (response.success && response.user) {
           setAuthSuccessMsg(t.auth.successLogin);
-          transitionTimeout.current = window.setTimeout(() => {
+          scheduleTransition(() => {
             if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
           }, 800);
         } else {
           setGeneralError(response.error || tr.authFailed);
-          generateCaptcha();
+          safelyGenerateCaptcha();
         }
       } else if (viewState === 'register') {
-        await KredoAuth.prepareRegistration();
+        console.log('[KREDO REGISTER] submit started');
+        const cleanedEmail = email.trim().toLowerCase();
+        let phoneForDraft = '';
+        try {
+          phoneForDraft = fullPhoneNumber || normalizeInternationalPhone(selectedPhoneCountry, phoneNational);
+        } catch (error) {
+          console.error('[KREDO REGISTER] error', error);
+          phoneForDraft = phoneNational.trim();
+        }
+        const draft: PendingRegistrationDraft = {
+          email: cleanedEmail,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          fullName: `${firstName.trim()} ${lastName.trim()}`.trim(),
+          phone: phoneForDraft,
+          phoneNational,
+          country,
+          countryCode: selectedPhoneCountry?.dialCode || '',
+          lang,
+        };
+        savePendingRegistration(draft);
+
+        try {
+          await KredoAuth.prepareRegistration();
+        } catch (error) {
+          console.error('[KREDO REGISTER] error', error);
+        }
         if (requestGeneration.current !== requestId) return;
 
         const response = await KredoAuth.signUp(
-          email,
+          cleanedEmail,
           normalizePasswordInput(password),
-          firstName.trim(),
-          lastName.trim(),
-          fullPhoneNumber,
-          country,
+          draft.firstName,
+          draft.lastName,
+          draft.phone,
+          draft.country,
           lang,
         );
         if (requestGeneration.current !== requestId) return;
 
-        if (response.success && response.user && response.emailSent) {
-          setAuthSuccessMsg(tr.accountCreated);
-          setTimer(60);
-          setVerificationCode('');
-          setViewState('email-verification');
+        if (response.success && response.emailSent) {
+          registerCodeSent = true;
+          console.log('[KREDO REGISTER] signUp success');
+          savePendingRegistration(draft);
+          showOtpScreen(tr.codeSentEmail);
           return;
-        } else {
-          setGeneralError(response.error || tr.regFailed);
-          generateCaptcha();
         }
+
+        setGeneralError(response.error || tr.regFailed);
+        safelyGenerateCaptcha();
       } else if (viewState === 'forgot-password') {
         const response = await KredoAuth.resetPassword(email, lang);
         if (requestGeneration.current !== requestId) return;
 
         if (response.success) {
           setAuthSuccessMsg(tr.recoverySent);
-          transitionTimeout.current = window.setTimeout(() => {
+          scheduleTransition(() => {
             if (requestGeneration.current !== requestId) return;
             switchAuthMode('login');
           }, 3000);
@@ -335,8 +464,9 @@ export default function LoginRegister({
         if (requestGeneration.current !== requestId) return;
 
         if (response.success && response.user) {
+          clearPendingRegistration();
           setAuthSuccessMsg(response.warning || tr.identityVerified);
-          transitionTimeout.current = window.setTimeout(() => {
+          scheduleTransition(() => {
             if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
@@ -350,7 +480,7 @@ export default function LoginRegister({
 
         if (response.success && response.user) {
           setAuthSuccessMsg(t.security.mfaVerified);
-          transitionTimeout.current = window.setTimeout(() => {
+          scheduleTransition(() => {
             if (requestGeneration.current !== requestId) return;
             loginUser(response.user!);
             setRoute('dashboard');
@@ -360,10 +490,14 @@ export default function LoginRegister({
         }
       }
     } catch (err: any) {
-      console.error('Authentication request failed:', err);
+      console.error('[KREDO REGISTER] error', err);
       if (requestGeneration.current === requestId) {
-        setGeneralError(tr.unexpectedError);
-        if (viewState === 'register') generateCaptcha();
+        if (viewState === 'register' && registerCodeSent && email.trim()) {
+          showOtpScreen(tr.codeSentEmail);
+        } else {
+          setGeneralError(tr.unexpectedError);
+        }
+        if (viewState === 'register') safelyGenerateCaptcha();
       }
     } finally {
       if (requestGeneration.current === requestId) {
@@ -730,6 +864,9 @@ export default function LoginRegister({
                   }`}>
                     {tr.verificationCodeTitle}
                   </label>
+                  <p className={`mb-3 text-center text-xs font-semibold ${theme === 'dark' ? 'text-stone-400' : 'text-stone-600'}`}>
+                    {tr.codeSentEmail}: <span className={theme === 'dark' ? 'text-white' : 'text-stone-950'}>{email}</span>
+                  </p>
                   
                   <div className="mx-auto grid w-full max-w-[22rem] grid-cols-8 gap-1.5 sm:gap-2">
                     {Array.from({ length: EMAIL_OTP_BOX_COUNT }, (_, i) => (
@@ -826,6 +963,16 @@ export default function LoginRegister({
                     }`}
                   >
                     {tr.resendCode} {timer > 0 ? `(${timer}s)` : ''}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => switchAuthMode('register')}
+                    disabled={loading}
+                    className={`min-h-11 touch-manipulation px-3 text-xs font-bold ${
+                      theme === 'dark' ? 'text-stone-300 hover:text-white' : 'text-stone-600 hover:text-stone-950'
+                    }`}
+                  >
+                    {tr.changeEmail}
                   </button>
                 </div>
               </div>

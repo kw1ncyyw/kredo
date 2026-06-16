@@ -671,6 +671,7 @@ export const KredoAuth = {
           
           return { success: true, emailSent: true, user: profile };
         }
+        return { success: true, emailSent: true };
       } catch (err: any) {
         return { success: false, emailSent: false, error: translateAuthError(err.message || 'Network error', lang) };
       }
